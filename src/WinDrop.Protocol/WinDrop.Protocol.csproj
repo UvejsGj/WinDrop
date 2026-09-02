@@ -3,4 +3,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <RootNamespace>WinDrop.Protocol</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WinDrop.Protocol.Tests" />
+  </ItemGroup>
+
 </Project>
