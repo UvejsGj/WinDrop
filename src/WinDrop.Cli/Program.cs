@@ -29,7 +29,7 @@ try
     {
         "receive" => await ReceiveAsync(args, stopping.Token),
         "send" => await SendAsync(args, stopping.Token),
-        "browse" => await BrowseAsync(stopping.Token),
+        "browse" => await BrowseAsync(args, stopping.Token),
         _ => PrintUsage(),
     };
 }
@@ -47,6 +47,8 @@ static int PrintUsage()
           windrop receive [--dir <path>] [--yes]   advertise and accept transfers
           windrop send [--to <name>| --peer <host>] <file> [file...]
           windrop browse                   list nearby peers
+
+        Add --bridge <host> to any command to use a Linux box running OWL as the radio.
 
         Reaches another WinDrop instance, opendrop, or a Mac with
         `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
@@ -77,7 +79,7 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
         ConsentHandler = autoAccept ? AutoAcceptAsync : PromptAsync,
     });
 
-    await using var transport = new InfraWifiTransport();
+    await using IAirDropTransport transport = CreateTransport(args);
 
     string instance = $"{Environment.MachineName}-{Guid.NewGuid().ToString("N")[..6]}";
     var record = new AirDropServiceRecord(instance, AirDropServiceRecord.DefaultPort, flags);
@@ -145,9 +147,9 @@ static Task<bool> PromptAsync(AirDropAskRequest request, CancellationToken ct)
     return Task.FromResult(accepted);
 }
 
-static async Task<int> BrowseAsync(CancellationToken ct)
+static async Task<int> BrowseAsync(string[] args, CancellationToken ct)
 {
-    await using var transport = new InfraWifiTransport();
+    await using IAirDropTransport transport = CreateTransport(args);
 
     Console.WriteLine("Browsing for AirDrop peers (Ctrl+C to stop)...\n");
 
@@ -192,6 +194,12 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
             continue;
         }
 
+        if (string.Equals(args[i], "--bridge", StringComparison.OrdinalIgnoreCase))
+        {
+            if (++i < args.Length) { /* consumed by CreateTransport */ }
+            continue;
+        }
+
         if (string.Equals(args[i], "--peer", StringComparison.OrdinalIgnoreCase))
         {
             if (++i < args.Length) peerHost = args[i];
@@ -223,7 +231,7 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
         return 1;
     }
 
-    await using var transport = new InfraWifiTransport();
+    await using IAirDropTransport transport = CreateTransport(args);
 
     AirDropPeer? target = null;
 
@@ -328,6 +336,22 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
     return 0;
 }
 
+
+/// <summary>
+/// Picks the transport. Without --bridge we drive the local radio over mDNS, which
+/// reaches other WinDrop instances, opendrop and a Mac with BrowseAllInterfaces. With
+/// it, a Linux box running OWL lends us its AWDL interface — the only route to an
+/// iPhone, and the only one that has never been tested against a real device.
+/// </summary>
+static IAirDropTransport CreateTransport(string[] args)
+{
+    string? bridge = ArgumentValue(args, "--bridge");
+
+    if (bridge is null) return new InfraWifiTransport();
+
+    Console.WriteLine($"Using bridge at {bridge}");
+    return new BridgeTransport(bridge);
+}
 static string? ArgumentValue(string[] args, string name)
 {
     int index = Array.FindIndex(args, a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));

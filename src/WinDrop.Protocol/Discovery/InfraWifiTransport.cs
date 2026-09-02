@@ -3,7 +3,6 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using WinDrop.Protocol.Dns;
 
 namespace WinDrop.Protocol.Discovery;
 
@@ -17,34 +16,23 @@ namespace WinDrop.Protocol.Discovery;
 /// WHO THIS CANNOT REACH. An iPhone. iOS binds AirDrop's browser to awdl0 and offers no
 /// override, so it will never see this service no matter how correct the records are.
 /// That is not a defect in this class — it is the constraint recorded in ADR-001, and
-/// the reason a BridgeTransport exists in the plan.
+/// the reason <see cref="BridgeTransport"/> exists.
 /// </summary>
 public sealed class InfraWifiTransport : IAirDropTransport
 {
     private readonly MulticastDns _mdns = new();
     private readonly Channel<AirDropPeer> _discovered = Channel.CreateUnbounded<AirDropPeer>();
-    private readonly Dictionary<string, PendingPeer> _pending = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _announced = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ServiceAssembler _assembler = new("infra-wifi");
     private readonly object _gate = new();
 
     private AirDropServiceRecord? _advertised;
-    private string _hostName = $"{Environment.MachineName.ToLowerInvariant()}.local";
+    private readonly string _hostName = $"{Environment.MachineName.ToLowerInvariant()}.local";
     private bool _started;
 
     public string Name => "infra-wifi";
 
     /// <summary>See the class remarks: correct records, wrong link layer for an iPhone.</summary>
     public bool CanReachAppleDevices => false;
-
-    /// <summary>A service seen in pieces: PTR, SRV, TXT and A/AAAA arrive as separate records.</summary>
-    private sealed class PendingPeer
-    {
-        public string? Host;
-        public ushort Port;
-        public AirDropReceiverFlags Flags;
-        public IPAddress? Address;
-        public int InterfaceIndex;
-    }
 
     private void EnsureStarted()
     {
@@ -63,11 +51,13 @@ public sealed class InfraWifiTransport : IAirDropTransport
     public async Task<IAsyncDisposable> AdvertiseAsync(AirDropServiceRecord record, CancellationToken ct = default)
     {
         EnsureStarted();
+
         _advertised = record;
+        _assembler.OwnInstance = record.InstanceName;
 
         // Announce unsolicited as well as answering queries: a peer that is already
         // browsing will not send a fresh query just because we arrived.
-        await _mdns.SendAsync(BuildAnnouncement(record), ct);
+        await _mdns.SendAsync(AirDropRecords.BuildAnnouncement(record, _hostName, LocalAddresses()), ct);
 
         return new Advertisement(this);
     }
@@ -79,27 +69,6 @@ public sealed class InfraWifiTransport : IAirDropTransport
             owner._advertised = null;
             return ValueTask.CompletedTask;
         }
-    }
-
-    private DnsMessage BuildAnnouncement(AirDropServiceRecord record)
-    {
-        string instance = $"{record.InstanceName}.{AirDropServiceRecord.ServiceType}";
-
-        var message = new DnsMessage
-        {
-            IsResponse = true,
-            Answers =
-            {
-                new PtrRecord(AirDropServiceRecord.ServiceType, instance),
-                new SrvRecord(instance, _hostName, (ushort)record.Port),
-                new TxtRecord(instance, record.ToTxtRecord()),
-            },
-        };
-
-        foreach (IPAddress address in LocalAddresses())
-            message.Additionals.Add(new AddressRecord(_hostName, address));
-
-        return message;
     }
 
     /// <summary>
@@ -152,11 +121,6 @@ public sealed class InfraWifiTransport : IAirDropTransport
     {
         EnsureStarted();
 
-        var query = new DnsMessage
-        {
-            Questions = { new DnsQuestion(AirDropServiceRecord.ServiceType, DnsRecordType.Ptr) },
-        };
-
         // Re-query periodically. mDNS is lossy by design and a peer that appeared after
         // our first query would otherwise never be found.
         _ = Task.Run(async () =>
@@ -165,7 +129,7 @@ public sealed class InfraWifiTransport : IAirDropTransport
             {
                 try
                 {
-                    await _mdns.SendAsync(query, ct);
+                    await _mdns.SendAsync(AirDropRecords.BuildQuery(), ct);
                     await Task.Delay(TimeSpan.FromSeconds(3), ct);
                 }
                 catch (OperationCanceledException) { return; }
@@ -178,120 +142,23 @@ public sealed class InfraWifiTransport : IAirDropTransport
 
     private void OnMessage(ReceivedDnsMessage received)
     {
-        if (!received.Message.IsResponse)
+        if (AirDropRecords.IsQueryForService(received.Message))
         {
-            AnswerQuery(received);
+            if (_advertised is { } record)
+            {
+                _ = _mdns.SendAsync(
+                    AirDropRecords.BuildAnnouncement(record, _hostName, LocalAddresses()),
+                    CancellationToken.None);
+            }
+
             return;
         }
 
         lock (_gate)
         {
-            foreach (DnsRecord record in received.Message.Answers.Concat(received.Message.Additionals))
-                Absorb(record, received.InterfaceIndex);
-
-            PublishComplete();
+            foreach (AirDropPeer peer in _assembler.Absorb(received.Message, received.InterfaceIndex))
+                _discovered.Writer.TryWrite(peer);
         }
-    }
-
-    private void Absorb(DnsRecord record, int interfaceIndex)
-    {
-        switch (record)
-        {
-            case PtrRecord ptr when ptr.Name.EndsWith(AirDropServiceRecord.ServiceType, StringComparison.OrdinalIgnoreCase):
-                Slot(ptr.Target).InterfaceIndex = interfaceIndex;
-                break;
-
-            case SrvRecord srv when srv.Name.EndsWith(AirDropServiceRecord.ServiceType, StringComparison.OrdinalIgnoreCase):
-            {
-                PendingPeer slot = Slot(srv.Name);
-                slot.Host = srv.Target;
-                slot.Port = srv.Port;
-                slot.InterfaceIndex = interfaceIndex;
-                break;
-            }
-
-            case TxtRecord txt when txt.Name.EndsWith(AirDropServiceRecord.ServiceType, StringComparison.OrdinalIgnoreCase):
-            {
-                PendingPeer slot = Slot(txt.Name);
-
-                if (txt.Entries.TryGetValue("flags", out string? raw) && int.TryParse(raw, out int flags))
-                    slot.Flags = (AirDropReceiverFlags)flags;
-
-                break;
-            }
-
-            case AddressRecord address:
-            {
-                // Address records name a host, not a service instance, so attach them to
-                // every pending peer whose SRV pointed at that host.
-                foreach (PendingPeer slot in _pending.Values)
-                {
-                    if (!string.Equals(slot.Host, address.Name, StringComparison.OrdinalIgnoreCase)) continue;
-
-                    // Prefer link-local IPv6, which is what AirDrop actually uses.
-                    if (slot.Address is null || (address.Address.IsIPv6LinkLocal && !slot.Address.IsIPv6LinkLocal))
-                    {
-                        slot.Address = address.Address;
-                        slot.InterfaceIndex = interfaceIndex;
-                    }
-                }
-
-                break;
-            }
-        }
-    }
-
-    private PendingPeer Slot(string instance)
-    {
-        if (!_pending.TryGetValue(instance, out PendingPeer? slot))
-            _pending[instance] = slot = new PendingPeer();
-
-        return slot;
-    }
-
-    private void PublishComplete()
-    {
-        foreach (var (instance, slot) in _pending)
-        {
-            if (slot.Address is null || slot.Port == 0) continue;
-            if (!_announced.Add(instance)) continue;
-
-            IPAddress address = slot.Address;
-
-            // A link-local address is meaningless without the interface it belongs to.
-            if (address.IsIPv6LinkLocal)
-                address = new IPAddress(address.GetAddressBytes(), slot.InterfaceIndex);
-
-            string display = instance.EndsWith(AirDropServiceRecord.ServiceType, StringComparison.OrdinalIgnoreCase)
-                ? instance[..^(AirDropServiceRecord.ServiceType.Length + 1)]
-                : instance;
-
-            // Do not report ourselves. Advertising and browsing share one socket set, so
-            // our own announcements come back to us, and a peer list that offers to send
-            // you your own files is just wrong.
-            if (_advertised is { } mine
-                && display.Equals(mine.InstanceName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-
-            _discovered.Writer.TryWrite(new AirDropPeer(
-                display, new IPEndPoint(address, slot.Port), slot.Flags, Name));
-        }
-    }
-
-    private void AnswerQuery(ReceivedDnsMessage received)
-    {
-        if (_advertised is not { } record) return;
-
-        bool asksForUs = received.Message.Questions.Any(q =>
-            q.Type is DnsRecordType.Ptr or DnsRecordType.Any
-            && q.Name.Equals(AirDropServiceRecord.ServiceType, StringComparison.OrdinalIgnoreCase));
-
-        if (!asksForUs) return;
-
-        _ = _mdns.SendAsync(BuildAnnouncement(record), CancellationToken.None);
     }
 
     // ---- connections -------------------------------------------------------

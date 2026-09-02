@@ -51,6 +51,32 @@ real security boundary in the protocol, so only for scripted testing).
 
 **Who it does not reach:** an iPhone. See above.
 
+### Bridge transport
+
+When the hardware exists, `--bridge <host>` routes everything through a Linux box
+running OWL:
+
+```powershell
+dotnet run --project src\WinDrop.Cli -- receive --bridge 192.168.1.50
+dotnet run --project src\WinDrop.Cli -- send --bridge 192.168.1.50 photo.jpg
+```
+
+On that box:
+
+```bash
+sudo ./tools/windrop-bridge.py --interface awdl0
+```
+
+The bridge relays mDNS datagrams and pipes TCP. It parses no property lists, holds no
+keys and terminates no TLS — every protocol decision stays in the Windows process, so a
+compromised bridge still cannot read a transfer.
+
+**What is verified.** Both directions of the relay, end to end, against the real daemon
+run over an ordinary interface (`--interface eth0`), including an inbound transfer
+driven by opendrop. **What is not:** that `awdl0` behaves like an ordinary interface to
+a socket, that OWL holds the link up under load, and — see the ADR-001 addendum — that a
+current iPhone will talk to a non-Apple peer at all.
+
 ### Building a standalone app
 
 ```powershell
@@ -128,12 +154,13 @@ src/WinDrop.Protocol/
   Archive/        CPIO newc reader and writer
   Compression/    DVZip chunked zlib, gzip fallback
   Dns/            DNS wire format for mDNS
-  Discovery/      ITransport seam, mDNS, the infra-Wi-Fi transport
+  Discovery/      ITransport seam, mDNS, the infra-Wi-Fi and bridge transports
   AirDrop*.cs     the Discover/Ask/Upload state machine, both halves
 src/WinDrop.App/                    WPF desktop app, AirDrop-styled
 src/WinDrop.Cli/                    send / receive / browse
 src/WinDrop.Tools.ContinuitySniffer/  milestone 0 BLE capture
 src/WinDrop.Tools.ContactHash/        local contact-hash probe
+tools/windrop-bridge.py             the Linux-side AWDL relay daemon
 tools/plist_oracle.py               plistlib fixtures and differential oracle
 docs/                               ADRs and reverse-engineering notes
 ```
