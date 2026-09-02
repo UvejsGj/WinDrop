@@ -3,3 +3,4 @@ obj/
 *.user
 .vs/
 captures/*.jsonl
+publish/

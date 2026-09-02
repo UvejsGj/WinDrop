@@ -51,6 +51,22 @@ real security boundary in the protocol, so only for scripted testing).
 
 **Who it does not reach:** an iPhone. See above.
 
+### Building a standalone app
+
+```powershell
+dotnet publish src\WinDrop.App -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
+```
+
+Produces a single `publish\WinDrop.exe` of about half a megabyte, which needs the .NET 8
+runtime present. Pass `--self-contained true` instead to get a ~150 MB executable that
+runs on a machine with no .NET installed.
+
+The icon is generated rather than committed as an opaque binary:
+
+```powershell
+.\tools\make-icon.ps1
+```
+
 ### Milestone 0 tools
 
 ```

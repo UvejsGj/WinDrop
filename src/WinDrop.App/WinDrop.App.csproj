@@ -4,7 +4,12 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <RootNamespace>WinDrop.App</RootNamespace>
-    <AssemblyName>WinDropApp</AssemblyName>
+    <AssemblyName>WinDrop</AssemblyName>
+    <ApplicationIcon>appicon.ico</ApplicationIcon>
+    <Product>WinDrop</Product>
+    <AssemblyTitle>WinDrop</AssemblyTitle>
+    <Company>WinDrop</Company>
+    <Version>0.1.0</Version>
 
     <!--
       Overrides Directory.Build.props. WPF data bindings resolve a culture when they
