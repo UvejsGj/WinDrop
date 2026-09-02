@@ -44,7 +44,7 @@ static int PrintUsage()
         WinDrop - an AirDrop implementation for Windows
 
           windrop receive [--dir <path>] [--yes]   advertise and accept transfers
-          windrop send <file> [file...]    find a peer and send files
+          windrop send [--to <name>] <file> [file...]  find a peer and send files
           windrop browse                   list nearby peers
 
         Reaches another WinDrop instance, opendrop, or a Mac with
@@ -175,9 +175,26 @@ static async Task<int> BrowseAsync(CancellationToken ct)
 
 static async Task<int> SendAsync(string[] args, CancellationToken ct)
 {
-    string[] paths = args.Skip(1).Where(a => !a.StartsWith("--")).ToArray();
+    // Parse positionals by hand rather than filtering out anything starting with "--":
+    // that filter drops the flag but keeps its value, so `send --to foo a.jpg` would
+    // try to send a file literally named "foo".
+    var paths = new List<string>();
+    string? filter = null;
 
-    if (paths.Length == 0)
+    for (int i = 1; i < args.Length; i++)
+    {
+        if (string.Equals(args[i], "--to", StringComparison.OrdinalIgnoreCase))
+        {
+            if (++i < args.Length) filter = args[i];
+            continue;
+        }
+
+        if (args[i].StartsWith("--")) continue;
+
+        paths.Add(args[i]);
+    }
+
+    if (paths.Count == 0)
     {
         Console.Error.WriteLine("No files given.");
         return 1;
@@ -204,6 +221,13 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
     {
         await foreach (AirDropPeer peer in transport.BrowseAsync(window.Token))
         {
+            if (filter is not null
+                && !peer.InstanceName.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"  skipping {peer.InstanceName} (does not match --to {filter})");
+                continue;
+            }
+
             target = peer;
             break;
         }
