@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RootNamespace>WinDrop.Tools.ContinuitySniffer</RootNamespace>
+    <AssemblyName>continuity-sniff</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WinDrop.Protocol\WinDrop.Protocol.csproj" />
+  </ItemGroup>
+</Project>
