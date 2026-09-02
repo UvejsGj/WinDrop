@@ -13,7 +13,7 @@ protocol. Learning project: understanding over shortcuts, no wrapping of existin
 | 3. Self-signed TLS + minimal HTTP/1.1 | **done** |
 | 4. Discover → Ask → Upload state machine | **done** — verified against opendrop, an independent implementation |
 | 5. DVZip compression + CPIO `newc` archive | **done** — CPIO checked against bsdtar/libarchive |
-| 6. Reaching an iPhone | **blocked** — needs AWDL, see [ADR-001](docs/adr-001-transport-selection.md) |
+| 6. Reaching an iPhone | **blocked, and possibly closed** — needs AWDL hardware, and there is evidence modern iOS no longer accepts non-Apple peers at all. See the addendum in [ADR-001](docs/adr-001-transport-selection.md) |
 
 145 tests, all passing.
 
