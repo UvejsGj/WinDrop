@@ -51,6 +51,55 @@ those bytes so the next occurrence can be examined rather than counted.
 
 ### Observations
 
+#### 2026-09-02 — CONFIRMED: full interop with opendrop
+
+WinDrop sender to `opendrop receive`, over IPv6 link-local between Windows and WSL2
+Ubuntu 22.04. Two files, 69 and 6756 bytes, both arriving byte-identical (MD5 verified
+against the originals).
+
+```
+Sending to fe80::215:5dff:fe69:142%45 @ [...]:8771 via direct (flags=0x0)
+Peer identifies as 'UvejsLaptop' (OpenDrop)
+Accepted. Uploading via gzip...
+Done.
+```
+
+This is the strongest validation available without Apple hardware. Every layer was
+exercised against an implementation written by people who read the protocol
+independently of us:
+
+| Layer | Evidence |
+|---|---|
+| TLS, self-signed, no validation | handshake completed |
+| HTTP/1.1 framing on one connection | three requests, no desync |
+| bplist **writer** | opendrop parsed our /Discover and /Ask bodies |
+| bplist **reader** | we parsed its /Discover response and read ReceiverModelName |
+| Discover / Ask / Upload state machine | consent prompt raised, upload accepted |
+| cpio newc writer | opendrop extracted both members |
+| gzip path | selected and understood |
+
+Notably the `/Ask` plist was where a mismatch seemed most likely, since its field names
+and its boolean-versus-integer choices were read off opendrop's source rather than
+observed. They were right.
+
+Still unproven: that any of this satisfies **Apple**. opendrop is a reimplementation, so
+a shared misreading of Apple's behaviour would pass this test. Only an Apple device
+settles that.
+
+#### opendrop facts worth recording
+
+Learned by reading its source and running it, not from documentation:
+
+- **Its listener is IPv6-only.** `server.py` uses `HTTPServerV6` with
+  `address_family = socket.AF_INET6`, bound to the interface's link-local address. An
+  IPv4 address for the same host will never connect.
+- **It listens on port 8771**, not AirDrop's 8770.
+- **`-n` is the display name, `-i` is the interface.** `-n eth0` is silently accepted and
+  leaves it bound to `awdl0`, which then fails with a message about `owl` not running —
+  an error that points at the wrong thing entirely.
+- It reports `ReceiverModelName` as `OpenDrop`.
+
+
 #### 2026-09-02 — iPhone on iOS 26.6, share sheet open on AirDrop
 
 `continuity-sniff --seconds 90`, extended (BLE 5) advertisements enabled. 421 Apple

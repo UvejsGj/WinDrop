@@ -11,7 +11,7 @@ protocol. Learning project: understanding over shortcuts, no wrapping of existin
 | 1. Repo scaffold + transport seam | **done** |
 | 2. Binary plist (`bplist00`) encode/decode | **done** — differentially checked against Python `plistlib` |
 | 3. Self-signed TLS + minimal HTTP/1.1 | **done** |
-| 4. Discover → Ask → Upload state machine | **done** — full transfer verified end to end |
+| 4. Discover → Ask → Upload state machine | **done** — verified against opendrop, an independent implementation |
 | 5. DVZip compression + CPIO `newc` archive | **done** — CPIO checked against bsdtar/libarchive |
 | 6. Reaching an iPhone | **blocked** — needs AWDL, see [ADR-001](docs/adr-001-transport-selection.md) |
 

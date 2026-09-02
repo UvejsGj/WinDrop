@@ -123,26 +123,45 @@ opendrop --help
 
 ## 4. Test A — WinDrop sends, opendrop receives
 
+**Status: passing as of 2026-09-02.** See [protocol-notes.md](protocol-notes.md).
+
 The harder direction and the one to do first: it exercises our bplist writer, our cpio
 writer, the compression negotiation and the whole sender state machine.
+
+Three facts about opendrop that are not obvious and will each cost you an hour:
+
+- **Its listener is IPv6-only** (`HTTPServerV6`, `AF_INET6`), bound to the interface's
+  link-local address. The IPv4 address of the same host will never connect.
+- **It listens on port 8771**, not AirDrop's 8770.
+- **`-i` selects the interface; `-n` is the display name.** Passing `-n eth0` is silently
+  accepted, leaves it on `awdl0`, and then fails with a message about `owl` not running,
+  which points at entirely the wrong problem.
 
 In WSL:
 
 ```bash
-opendrop receive -n eth0
+opendrop receive -i eth0
 ```
 
-On Windows, using the WSL address from `wsl hostname -I`:
+It prints the link-local address and port it bound to. To reach that from Windows you
+need the address with the **Windows-side** scope ID, which is the index of the WSL
+virtual adapter, not the index Linux uses:
 
 ```powershell
-dotnet run --project src\WinDrop.Cli -- send --peer 172.x.x.x C:\path\to\photo.jpg
+Get-NetAdapter | Where-Object { $_.Name -like "*WSL*" } | Format-Table Name,ifIndex
 ```
 
-Expected:
+Then send, combining opendrop's address with that index:
+
+```powershell
+dotnet run --project src\WinDrop.Cli -- send --peer "fe80::215:5dff:fe69:142%45" --port 8771 C:\path\to\photo.jpg
+```
+
+opendrop prompts for consent in its own terminal; answer `y`. Expected:
 
 ```
-Sending to 172.x.x.x @ [172.x.x.x]:8770 via direct (flags=0x0)
-Peer identifies as '...'
+Sending to fe80::...%45 @ [fe80::...%45]:8771 via direct (flags=0x0)
+Peer identifies as 'UvejsLaptop' (OpenDrop)
 Waiting for the peer to accept...
 Accepted. Uploading via gzip...
 Done.
@@ -150,11 +169,18 @@ Done.
 
 **Watch the compression line.** With `--peer` there is no TXT record, so we assume the
 peer supports nothing optional and pick gzip — the safe assumption about an
-implementation that never told us what it understands. If you discovered the peer over
-mDNS instead and it still says gzip, that is the capability negotiation in
-`AirDropCompression.ShouldUseDvZip` working against a real peer.
+implementation that never told us what it understands.
 
-Verify the file landed and its bytes match.
+Then verify the bytes rather than trusting "Done". opendrop writes into the working
+directory it was started from:
+
+```powershell
+Get-FileHash C:\path\to\photo.jpg -Algorithm MD5
+```
+
+```bash
+md5sum ~/photo.jpg
+```
 
 ## 5. Test B — opendrop sends, WinDrop receives
 
@@ -171,8 +197,8 @@ dotnet run --project src\WinDrop.Cli -- receive
 In WSL:
 
 ```bash
-opendrop find -n eth0
-opendrop send -r <id-from-find> -f /path/to/file -n eth0
+opendrop find -i eth0
+opendrop send -r <id-from-find> -f /path/to/file -i eth0
 ```
 
 Our receiver should print a consent prompt naming the sender and the file, then write it

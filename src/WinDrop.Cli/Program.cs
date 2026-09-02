@@ -232,7 +232,12 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
         // Skip discovery entirely. Useful whenever multicast cannot reach the peer - a
         // WSL NAT boundary, a router that drops mDNS - since the app-layer protocol is
         // what this is meant to exercise, not our mDNS implementation.
-        IPAddress[] addresses = await Dns.GetHostAddressesAsync(peerHost, ct);
+        // Try a literal first. A scoped link-local like fe80::1%45 is exactly what
+        // an IPv6-only peer needs, and pushing it through DNS resolution loses the
+        // scope - which makes the address unroutable rather than merely wrong.
+        IPAddress[] addresses = IPAddress.TryParse(peerHost, out IPAddress? literal)
+            ? [literal]
+            : await Dns.GetHostAddressesAsync(peerHost, ct);
 
         if (addresses.Length == 0)
         {
