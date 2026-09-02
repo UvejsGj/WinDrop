@@ -144,6 +144,79 @@ antenna" — conceptually a USB dongle that happens to speak Ethernet:
 
 Cost: ~$15–30 for a used Atheros card, plus a Pi/spare laptop.
 
+## Addendum, 2026-09-02: hardware survey and a threat to the premise
+
+Researched after the app layer was finished. Three findings, in increasing order of
+how much they matter.
+
+### 1. The recommended adapter was subtly wrong
+
+OWL's README recommends the **AR9280**, which is a *PCIe* part using `ath9k`. The
+AR9271 named earlier in this project is a *USB* part using `ath9k_htc` — a different
+driver with different capabilities.
+
+OWL asks for **active monitor mode**, meaning the card acknowledges received frames.
+`ath9k_htc` does not advertise that capability; there is an open firmware issue asking
+for it with no resolution. However:
+
+- OWL's own wording is that lacking it "might suffer from throughput degradation because
+  the sender will re-transmit each frame up to 7 times" — degraded, not broken.
+- Mathy Vanhoef's injection survey reports that Atheros/Qualcomm dongles, `ath9k_htc`
+  among them, **do acknowledge frames in practice** even without the flag being exposed.
+
+So the AR9271 is probably fine. One unquantified risk remains: that survey also notes
+the stock `ath9k_htc` firmware **overwrites the sequence and fragment numbers of
+injected frames**. Whether AWDL tolerates that is unknown; patched firmware exists.
+
+**MediaTek is worth considering instead.** The same survey lists `mt76` and `mt7601u` as
+supporting active monitor mode outright — the thing OWL actually asks for — and those
+adapters are dual-band, where the AR9271 is 2.4 GHz only.
+
+### 2. A modern Raspberry Pi may need no adapter at all
+
+The 2019-era guidance was that only the Pi 3B worked, because nexmon had no frame
+injection for the BCM43455 in the 3B+. That is out of date. Kali 2025.1 ships
+`brcmfmac-nexmon-dkms` and `firmware-nexmon` with **monitor mode and frame injection**
+tested on Pi 5, Pi 4, Pi 3B, Pi Zero 2 W and Pi Zero W, using the on-board radio.
+
+Unknown: whether nexmon provides *active* monitor mode. Probably not, which puts it in
+the same degraded-but-working category as the AR9271.
+
+Also worth noting: **owlink.org is gone.** The domain now serves an unrelated gambling
+site. Any link to it in these notes is dead, and the surviving documentation is
+whatever is in the GitHub repositories.
+
+### 3. The premise itself may be broken, independently of any hardware
+
+This is the finding that matters, and it is not about radios.
+
+**GoDrop**, a Go reimplementation of opendrop, archived August 2024, states plainly:
+"This library only works until macOS Ventura and iOS 15. Apple apparently changed the
+way their AirDrop protocol works."
+
+**opendrop issue #80** reports being able to find and send to a Mac but *not* to
+iPhones, unresolved.
+
+**opendrop's own README** warns it "might be incompatible with future AirDrop versions."
+
+The target here is **iOS 26.6** — many major versions past iOS 15.
+
+Corroborating evidence from our own work: the beacon we captured carries version byte
+**0x03** where the published research described `0x01`. We recorded that as a curiosity
+at the time. Read alongside the above, it is consistent with the protocol having moved.
+
+**Confidence: suggestive, not conclusive.** GoDrop's claim is one project's README with
+no analysis behind it. Issue #80 has confounds — an unrelated `AttributeError` and
+injection failures — so it may be a broken setup rather than a protocol change. Nobody
+has published what Apple actually changed, or when.
+
+**What this means for the hardware decision.** The adapter was previously framed as
+buying iPhone interoperability. It should now be framed as buying *the ability to find
+out whether iPhone interoperability is still possible at all*. That is a materially
+different purchase, and the first thing to test is the cheapest one: whether the devices
+can see each other, before any file is ever sent.
+
+
 ## Testing strategy consequences
 
 Target **Everyone** mode, not Contacts Only: Contacts Only requires an Apple-issued
