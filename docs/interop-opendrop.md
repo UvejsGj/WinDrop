@@ -72,9 +72,36 @@ netsh advfirewall firewall delete rule name="WinDrop 8770"
 netsh advfirewall firewall delete rule name="WinDrop mDNS"
 ```
 
-## 2. Install opendrop
+## 2. Get a Python old enough for opendrop
 
-Inside WSL (or on the live-USB machine):
+**Check first — this is the step most likely to sink the whole exercise.** In WSL:
+
+```bash
+python3 --version
+```
+
+opendrop has not been meaningfully maintained since around 2021. On Python 3.12 expect
+friction; on 3.13+ expect failure, because its dependencies (`libarchive-c`, older
+`zeroconf`) predate those releases and will not build or import.
+
+Ubuntu 26.04 ships **Python 3.14 and offers no older interpreter in apt**, so if that is
+what `wsl --install` gave you, there is nothing to fix inside that distro. Install an
+older one alongside it instead — WSL runs several distros at once, and they share the
+same virtual network, so the address does not change:
+
+```powershell
+wsl --install -d Ubuntu-22.04
+```
+
+Ubuntu 22.04 ships Python 3.10. Afterwards, enter that distro specifically:
+
+```powershell
+wsl -d Ubuntu-22.04
+```
+
+## 3. Install opendrop
+
+Inside the 22.04 distro:
 
 ```bash
 sudo apt update
@@ -87,15 +114,6 @@ pip install opendrop
 The venv is not optional on recent Ubuntu: PEP 668 makes a bare `pip install` fail with
 `externally-managed-environment`.
 
-**Expect friction.** opendrop has been lightly maintained since around 2021 and its
-dependencies (`zeroconf`, `libarchive-c`) have moved since. If it breaks on Python 3.12,
-reach for an older interpreter rather than debugging the dependency tree:
-
-```bash
-sudo apt install -y python3.10 python3.10-venv
-python3.10 -m venv ~/od
-```
-
 Find the interface name and confirm the flags, which have changed across versions:
 
 ```bash
@@ -103,7 +121,7 @@ ip -brief addr
 opendrop --help
 ```
 
-## 3. Test A — WinDrop sends, opendrop receives
+## 4. Test A — WinDrop sends, opendrop receives
 
 The harder direction and the one to do first: it exercises our bplist writer, our cpio
 writer, the compression negotiation and the whole sender state machine.
@@ -138,7 +156,7 @@ mDNS instead and it still says gzip, that is the capability negotiation in
 
 Verify the file landed and its bytes match.
 
-## 4. Test B — opendrop sends, WinDrop receives
+## 5. Test B — opendrop sends, WinDrop receives
 
 Exercises our bplist *reader*, our cpio reader, and the path-traversal defence against
 names produced by software we did not write. **Needs mirrored networking** (Option B
@@ -160,7 +178,7 @@ opendrop send -r <id-from-find> -f /path/to/file -n eth0
 Our receiver should print a consent prompt naming the sender and the file, then write it
 to `%USERPROFILE%\Downloads\WinDrop` once accepted.
 
-## 5. What is likely to break, and what each failure means
+## 6. What is likely to break, and what each failure means
 
 | Symptom | Most likely cause |
 |---|---|
@@ -175,7 +193,7 @@ The `/Ask` row is where I would put money. The field names and the
 boolean-versus-integer choices in that plist were read off opendrop's source, and a
 mismatch there is exactly the kind of thing that survives every test we can write alone.
 
-## 6. Record the result
+## 7. Record the result
 
 Whatever happens, add it to [protocol-notes.md](protocol-notes.md) under Observations,
 in the same confirmed/refuted form as the beacon findings. A failure here is a finding
