@@ -38,6 +38,22 @@ var watcher = new BluetoothLEAdvertisementWatcher
     ScanningMode = BluetoothLEScanningMode.Active,
 };
 
+// BLE 5 extended advertisements are NOT delivered unless explicitly requested. Legacy
+// advertisements cap the payload at 31 bytes; if Apple moved the AirDrop beacon to
+// extended advertising on a modern iOS, the default watcher would receive nothing and
+// we would wrongly conclude the phone was not advertising at all. Opt in where the
+// radio supports it, and say so out loud when it does not.
+try
+{
+    watcher.AllowExtendedAdvertisements = true;
+    Console.WriteLine("Extended (BLE 5) advertisements: enabled");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Extended (BLE 5) advertisements: UNAVAILABLE - {ex.Message}");
+    Console.WriteLine("  Only legacy 31-byte advertisements will be seen.");
+}
+
 watcher.Received += (_, e) =>
 {
     foreach (var mfr in e.Advertisement.ManufacturerData)
