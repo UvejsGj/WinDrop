@@ -7,9 +7,9 @@ protocol. Learning project: understanding over shortcuts, no wrapping of existin
 
 | Milestone | State |
 |---|---|
-| 0. Capture Apple's Continuity BLE beacon on Windows | tool built; TLV parsing confirmed against real Apple traffic. AirDrop `0x05` beacon not yet captured |
-| 1. Repo scaffold + transport seam | done (scaffold) |
-| 2. Binary plist (`bplist00`) encode/decode | not started |
+| 0. Capture Apple's Continuity BLE beacon on Windows | **done** — beacon captured on iOS 26.6, contact-hash field confirmed |
+| 1. Repo scaffold + transport seam | done |
+| 2. Binary plist (`bplist00`) encode/decode | **done** — 39 tests, differentially checked against Python plistlib |
 | 3. Self-signed TLS + minimal HTTP/1.1 | not started |
 | 4. Discover -> Ask -> Upload state machine | not started |
 | 5. DVZip chunked compression + CPIO `newc` | not started |

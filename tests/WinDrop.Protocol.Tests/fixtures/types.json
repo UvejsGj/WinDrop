@@ -1,0 +1,179 @@
+{
+  "dict": {
+    "ascii": {
+      "string": "plain ascii string"
+    },
+    "bool_false": {
+      "bool": false
+    },
+    "bool_true": {
+      "bool": true
+    },
+    "data": {
+      "data": "AAEC/v8="
+    },
+    "date": {
+      "date": "2026-09-02T14:20:32+00:00"
+    },
+    "empty_array": {
+      "array": []
+    },
+    "empty_data": {
+      "data": ""
+    },
+    "empty_dict": {
+      "dict": {}
+    },
+    "empty_string": {
+      "string": ""
+    },
+    "int_255": {
+      "int": "255"
+    },
+    "int_256": {
+      "int": "256"
+    },
+    "int_65535": {
+      "int": "65535"
+    },
+    "int_65536": {
+      "int": "65536"
+    },
+    "int_int64_min": {
+      "int": "-9223372036854775808"
+    },
+    "int_max_u32": {
+      "int": "4294967295"
+    },
+    "int_negative": {
+      "int": "-1"
+    },
+    "int_over_u32": {
+      "int": "4294967296"
+    },
+    "int_zero": {
+      "int": "0"
+    },
+    "long_array": {
+      "array": [
+        {
+          "int": "0"
+        },
+        {
+          "int": "1"
+        },
+        {
+          "int": "2"
+        },
+        {
+          "int": "3"
+        },
+        {
+          "int": "4"
+        },
+        {
+          "int": "5"
+        },
+        {
+          "int": "6"
+        },
+        {
+          "int": "7"
+        },
+        {
+          "int": "8"
+        },
+        {
+          "int": "9"
+        },
+        {
+          "int": "10"
+        },
+        {
+          "int": "11"
+        },
+        {
+          "int": "12"
+        },
+        {
+          "int": "13"
+        },
+        {
+          "int": "14"
+        },
+        {
+          "int": "15"
+        },
+        {
+          "int": "16"
+        },
+        {
+          "int": "17"
+        },
+        {
+          "int": "18"
+        },
+        {
+          "int": "19"
+        }
+      ]
+    },
+    "nested": {
+      "dict": {
+        "a": {
+          "array": [
+            {
+              "int": "1"
+            },
+            {
+              "int": "2"
+            },
+            {
+              "dict": {
+                "b": {
+                  "string": "c"
+                }
+              }
+            }
+          ]
+        },
+        "d": {
+          "dict": {
+            "e": {
+              "array": [
+                {
+                  "bool": true
+                },
+                {
+                  "bool": false
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "real": {
+      "real": "3.141592653589793"
+    },
+    "real_negative": {
+      "real": "-0.5"
+    },
+    "repeated": {
+      "array": [
+        {
+          "string": "same"
+        },
+        {
+          "string": "same"
+        },
+        {
+          "string": "same"
+        }
+      ]
+    },
+    "unicode": {
+      "string": "Përshëndetje 世界 📡"
+    }
+  }
+}

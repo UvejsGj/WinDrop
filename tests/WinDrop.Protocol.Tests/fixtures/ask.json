@@ -1,0 +1,61 @@
+{
+  "dict": {
+    "BundleID": {
+      "string": "com.apple.finder"
+    },
+    "ConvertMediaFormats": {
+      "bool": false
+    },
+    "Files": {
+      "array": [
+        {
+          "dict": {
+            "ConvertMediaFormats": {
+              "int": "0"
+            },
+            "FileBomPath": {
+              "string": "./photo.jpg"
+            },
+            "FileIsDirectory": {
+              "bool": false
+            },
+            "FileName": {
+              "string": "photo.jpg"
+            },
+            "FileType": {
+              "string": "public.jpeg"
+            }
+          }
+        },
+        {
+          "dict": {
+            "ConvertMediaFormats": {
+              "int": "0"
+            },
+            "FileBomPath": {
+              "string": "./notes.txt"
+            },
+            "FileIsDirectory": {
+              "bool": false
+            },
+            "FileName": {
+              "string": "notes.txt"
+            },
+            "FileType": {
+              "string": "public.plain-text"
+            }
+          }
+        }
+      ]
+    },
+    "SenderComputerName": {
+      "string": "WinDrop"
+    },
+    "SenderID": {
+      "string": "0F8A3C21-4E7B-4A9D-9C2E-1B5D7E3F6A80"
+    },
+    "SenderModelName": {
+      "string": "Windows"
+    }
+  }
+}
