@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>WinDrop.Tools.ContactHash</RootNamespace>
+    <AssemblyName>contact-hash</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WinDrop.Protocol\WinDrop.Protocol.csproj" />
+  </ItemGroup>
+</Project>

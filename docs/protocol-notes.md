@@ -51,12 +51,65 @@ those bytes so the next occurrence can be examined rather than counted.
 
 ### Observations
 
-_(to be filled in from the first capture — record iOS version, whether the layout
-matched, what the version byte actually was, and whether hashes are non-zero in
-Everyone mode vs Contacts Only)_
+#### 2026-09-02 — iPhone on iOS 26.6, share sheet open on AirDrop
 
-| Date | iOS version | AirDrop mode | Payload | Layout matched? | Notes |
-|---|---|---|---|---|---|
+`continuity-sniff --seconds 90`, extended (BLE 5) advertisements enabled. 421 Apple
+advertisements, 14 distinct payloads. Two distinct AirDrop payloads from one device
+(`40:0C:E4:xx:xx:xx`), repeated 42 and 123 times — stable, not noise.
+
+```
+p1p2p3p4 00000000 03 HSH1 PHON HSH2 MAIL 00      42x, first seen 14:20:32
+p1p2p3p4 00000000 03 HSH1 MAIL HSH2 PHON 00     123x, first seen 14:20:45
+```
+
+Scored against the hypothesis:
+
+| Element | Predicted | Observed | Verdict |
+|---|---|---|---|
+| Payload length | 18 bytes | 18 bytes | **confirmed** |
+| Bytes [0..8) | 8 zero bytes | `p1 p2 p3 p4 00 00 00 00` | **refuted** — first 4 carry data |
+| Byte [8], version | `0x01` | `0x03` | position confirmed, value differs |
+| Bytes [9..17) | 4 x 2-byte contact hashes | 4 plausible 2-byte values | unconfirmed |
+| Byte [17] | `0x00` | `0x00` | **confirmed** |
+
+The 18-byte frame size and the trailing zero survive intact from iOS 12-era research all
+the way to iOS 26.6.
+
+#### The reordering
+
+Both payloads carry the same four values in a different order, from the same BLE
+address, 13 seconds apart, with prefix and version unchanged:
+
+```
+A:  HSH1  PHON  HSH2  MAIL
+B:  HSH1  MAIL  HSH2  PHON
+```
+
+Slots 1 and 3 swap; slots 0 and 2 hold. Exactly two orderings across 165 advertisements
+points to a rotation event rather than per-advertisement randomisation — the latter
+would yield many distinct orderings, not two with high repeat counts.
+
+Two explanations, not yet separated:
+
+1. The ordering is shuffled on some trigger, so the beacon cannot be fingerprinted by
+   the sequence. The *set* would then be the identity and the order would carry nothing.
+2. The 2-byte grouping is wrong and we are slicing a field with different internal
+   structure, making the "reordering" an artefact of a bad decode.
+
+Explanation (2) does not disturb any byte-level fact in the table above; it only
+reinterprets `[9..17)`.
+
+#### Verifying the contact-hash reading
+
+`contact-hash` (in `src/WinDrop.Tools.ContactHash`) tests whether those four values are
+truncated SHA-256 digests of the sender's contact identifiers. Apple's normalisation is
+unknown and consequential — `+1 (555) 010-9999` and `15550109999` hash to unrelated
+digests — so the tool sweeps the plausible variants and reports which one lands, if any.
+A hit identifies the field and the normalisation together. A total miss falsifies the
+contact-hash reading.
+
+It runs entirely locally and prints only 4-hex-digit prefixes, so an identifier never
+has to leave the machine in order to check a match.
 
 ### Open questions
 
@@ -71,3 +124,13 @@ Everyone mode vs Contacts Only)_
    requested, so a naive scanner sees silence and misreads it as "the phone is not
    advertising". It would also lift the 31-byte payload cap, which is one candidate
    explanation for truncated tails observed in legacy captures.
+6. What triggers the hash reordering? Re-opening the share sheet, a timer, or something
+   else? Separating explanation (1) from (2) needs a capture long enough to count
+   distinct orderings, plus one where the share sheet is deliberately closed and
+   reopened.
+7. What are the first four bytes (`p1 p2 p3 p4`)? Constant across both payloads from
+   this device; unknown whether they are constant across devices, across sessions, or
+   over time. A capture from a second Apple device would separate device identity from
+   protocol constant.
+8. Why is the version byte `0x03`? Is it an AirDrop protocol revision, and does an older
+   Apple device on the same network emit a lower value?
