@@ -27,6 +27,35 @@ public static class ContactHash
         return (ushort)((digest[0] << 8) | digest[1]);
     }
 
+
+    /// <summary>
+    /// The normalisation Apple applies, confirmed by capture against iOS 26.6 on
+    /// 2026-09-02: two identifiers reproduced observed beacon prefixes exactly.
+    ///
+    ///   email  hashed with no transformation beyond trimming (see caveat below)
+    ///   phone  digits only — '+' and all punctuation stripped, COUNTRY CODE RETAINED.
+    ///          Confirmed against the alternatives: the last-10 and last-9 digit forms
+    ///          and the '+'-prefixed form all produced non-matching digests.
+    ///
+    /// CAVEAT: the email that confirmed this was already entirely lowercase, so the
+    /// capture cannot distinguish "hashed as-is" from "lowercased first". Lowercasing is
+    /// assumed here because it is the behaviour that makes user-entered addresses match,
+    /// but a mixed-case address has not been tested. Resolve before relying on this for
+    /// contact matching in /Discover.
+    /// </summary>
+    public static string Normalize(string identifier)
+    {
+        string trimmed = identifier.Trim();
+
+        if (trimmed.Contains('@'))
+            return trimmed.ToLowerInvariant();
+
+        return new string(trimmed.Where(char.IsDigit).ToArray());
+    }
+
+    /// <summary>Prefix of an identifier under the confirmed normalisation.</summary>
+    public static ushort NormalizedPrefix(string identifier) => Prefix(Normalize(identifier));
+
     public static IReadOnlyList<ContactHashCandidate> Candidates(string identifier)
     {
         string trimmed = identifier.Trim();

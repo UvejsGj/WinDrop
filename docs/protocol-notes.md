@@ -99,6 +99,63 @@ Two explanations, not yet separated:
 Explanation (2) does not disturb any byte-level fact in the table above; it only
 reinterprets `[9..17)`.
 
+#### CONFIRMED: the values are truncated SHA-256 of contact identifiers
+
+Two of the four observed values were reproduced exactly by hashing the device owner's
+own identifiers, which settles the reading of the field:
+
+| Observed | Identifier kind | Normalisation that matched |
+|---|---|---|
+| `MAIL` | iCloud email address | hashed as-is (input was already lowercase) |
+| `PHON` | phone number | **digits only** — `+` and punctuation stripped, country code retained |
+
+The phone result is the informative one, because the alternatives were tested in the
+same run and all missed: the `+`-prefixed form, the last-10-digit form and the
+last-9-digit form produced unrelated digests. So Apple hashes the full international
+number with every non-digit removed.
+
+Residual unknown on the email side: the address that matched was already entirely
+lowercase, so the capture cannot distinguish "hashed as-is" from "lowercased first".
+`ContactHash.Normalize` assumes lowercasing, since that is what makes a user-typed
+address match, but a mixed-case address has not been tested. This must be resolved
+before the rule is relied on for contact matching in `/Discover`.
+
+#### REFUTED: the remaining two values are not iCloud aliases
+
+An iCloud account carries automatic `@me.com` and `@mac.com` aliases, which would have
+neatly accounted for the other two slots. Hashing both produced `B8BD` and `96AF` —
+neither is `HSH1` or `HSH2`. Hypothesis dead.
+
+#### Byte-level diff, which reframes the slot reading
+
+Aligning the two payloads:
+
+```
+idx:  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17
+A:   p1 p2 p3 p4 00 00 00 00 03 a1 a2 f1 f2 b1 b2 e1 e2 00
+B:   p1 p2 p3 p4 00 00 00 00 03 a1 a2 e1 e2 b1 b2 f1 f2 00
+                                      ^^^^^       ^^^^^
+```
+
+Bytes 0–10 and byte 17 are byte-identical. Only 11–16 differ, and they differ by
+swapping the confirmed phone hash with the confirmed email hash.
+
+This weakens the "four homogeneous hash slots" reading. `HSH1` sits inside the invariant
+region alongside the prefix and version byte, so it may belong to a header rather than
+to the hash array. `HSH2` is stranger still: it holds position while sitting *between*
+the two values that swap.
+
+Candidates for `HSH1` and `HSH2`, unresolved:
+
+1. Further contact identifiers the owner has on the account — a non-iCloud Apple ID
+   address, a rescue email, or a second phone number. Testable with `contact-hash`.
+2. Not contact hashes at all. `HSH1`'s position in the invariant region is consistent
+   with it being a header field that happens to be two bytes wide.
+3. A different normalisation of an identifier already tested.
+
+Note that neither remaining value blocks implementation: the field's type and its
+normalisation are both established, which is what the sender side needs.
+
 #### Verifying the contact-hash reading
 
 `contact-hash` (in `src/WinDrop.Tools.ContactHash`) tests whether those four values are
