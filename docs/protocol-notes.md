@@ -51,6 +51,35 @@ those bytes so the next occurrence can be examined rather than counted.
 
 ### Observations
 
+#### 2026-09-02 — CONFIRMED: mDNS records resolve in a third-party browser
+
+`tools/mdns_browse.py` drives python-zeroconf, an independent mDNS implementation,
+against a running `windrop receive`. Full round trip, not just a parse:
+
+```
+instance : UVEJSLAPTOP-0cedda._airdrop._tcp.local.
+server   : uvejslaptop.local.
+port     : 8770
+addresses: ['172.27.48.1', '192.168.1.39', 'fe80::17fb:83c4:f49a:5cd5', 'fe80::2fe1:aac2:4e23:9954']
+props    : {'flags': '10'}
+```
+
+PTR discovery, SRV resolution, TXT decoding and both address families all survive. The
+`flags` value decodes to 0xA — `SupportsDvZip | SupportsMixedTypes` — which is what the
+receiver advertises, so the capability bits a peer would negotiate against arrive intact.
+
+Run on Windows rather than in WSL deliberately: opendrop's browser is `V6Only` bound to
+one interface address, which cannot cross the WSL NAT boundary and collides with the
+host's address under mirrored networking. Neither limitation is ours, and neither says
+anything about the records.
+
+**Known wart, not yet addressed.** We advertise every address on every non-loopback
+interface, which here includes `172.27.48.1` — the WSL virtual switch, unreachable from
+anywhere else. A peer on the real network that tries addresses in order may stall on it
+before reaching a useful one. Apple's own responder also advertises broadly, so this is
+not obviously wrong, but it is worth revisiting if a real device is slow to connect.
+
+
 #### 2026-09-02 — CONFIRMED: opendrop sending to us, and two real bugs found
 
 `opendrop send` to `windrop receive`, over IPv4 between WSL2 and the Windows host.

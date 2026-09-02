@@ -130,6 +130,8 @@ wrong in a way that round-trips through itself perfectly:
 - **CPIO** — bsdtar/libarchive extracts our archives, and we read archives it produces,
   in both the newc and odc variants. (Trap: `tar --format cpio` means *odc*, magic
   `070707`. We write *newc*, `070701`; use `--format newc` to compare against ours.)
+- **mDNS** — python-zeroconf discovers and fully resolves our service: PTR, SRV, TXT and
+  both address families (`tools/mdns_browse.py`).
 - **The Continuity beacon** — captured from a real iPhone, not taken from a write-up.
 - **The full stack, both directions** — real transfers to and from **opendrop**, an
   independent implementation of the same protocol, byte-identical each way. Sending
@@ -137,9 +139,9 @@ wrong in a way that round-trips through itself perfectly:
   Together they cover the bplist writer and reader, cpio in both variants, gzip in both
   directions, the state machine on both sides, and TLS as client and as server.
 
-Two layers still have **no** external validation, and the source says so rather than
-implying otherwise: **DVZip**, because opendrop only ever speaks gzip, and **mDNS**,
-because both interop transfers bypassed discovery with a hand-written peer address.
+One layer still has **no** external validation, and the source says so rather than
+implying otherwise: **DVZip**. No third-party implementation of it exists — opendrop
+only ever speaks gzip — so Apple is the only thing that can ever validate that layer.
 
 What none of this proves is Apple compatibility: opendrop is a reimplementation, so a
 shared misreading of Apple would pass unnoticed. Only an Apple device settles that.
