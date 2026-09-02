@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>WinDrop.App</RootNamespace>
+    <AssemblyName>WinDropApp</AssemblyName>
+
+    <!--
+      Overrides Directory.Build.props. WPF data bindings resolve a culture when they
+      activate, and with invariant globalization that lookup throws "Cannot find
+      non-neutral culture related to en-us". The failure is delayed and confusing: the
+      window opens fine and only dies once the first templated binding is realised,
+      which here meant the moment a peer was discovered.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WinDrop.Protocol\WinDrop.Protocol.csproj" />
+  </ItemGroup>
+</Project>

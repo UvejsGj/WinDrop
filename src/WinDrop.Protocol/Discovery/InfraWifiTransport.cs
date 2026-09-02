@@ -240,6 +240,16 @@ public sealed class InfraWifiTransport : IAirDropTransport
                 ? instance[..^(AirDropServiceRecord.ServiceType.Length + 1)]
                 : instance;
 
+            // Do not report ourselves. Advertising and browsing share one socket set, so
+            // our own announcements come back to us, and a peer list that offers to send
+            // you your own files is just wrong.
+            if (_advertised is { } mine
+                && display.Equals(mine.InstanceName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+
             _discovered.Writer.TryWrite(new AirDropPeer(
                 display, new IPEndPoint(address, slot.Port), slot.Flags, Name));
         }

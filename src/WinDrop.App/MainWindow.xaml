@@ -1,0 +1,122 @@
+<Window x:Class="WinDrop.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:WinDrop.App"
+        Title="WinDrop" Height="640" Width="480"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI Variable Text, Segoe UI"
+        AllowDrop="True" Drop="OnFilesDropped" DragOver="OnDragOver">
+
+  <Window.Resources>
+    <local:ProgressArcConverter x:Key="Arc"/>
+    <local:BoolToVisibilityConverter x:Key="BoolVis"/>
+
+    <DataTemplate x:Key="PeerTile">
+      <Grid Width="112" Margin="6,10" Cursor="Hand" MouseLeftButtonUp="OnPeerClicked">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="88"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Hit-test filler so clicks land anywhere on the tile, not just on ink. -->
+        <Rectangle Grid.RowSpan="3" Fill="Transparent"/>
+
+        <Grid Grid.Row="0" Width="88" Height="88">
+          <Ellipse Width="72" Height="72" Fill="{StaticResource AvatarFill}"/>
+          <TextBlock Text="{Binding Initials}" Foreground="White" FontSize="26" FontWeight="SemiBold"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          <Path Stroke="{Binding RingBrush}" StrokeThickness="3" StrokeStartLineCap="Round"
+                StrokeEndLineCap="Round" Width="88" Height="88"
+                Visibility="{Binding ShowRing, Converter={StaticResource BoolVis}}"
+                Data="{Binding Progress, Converter={StaticResource Arc}, ConverterParameter=88}"/>
+        </Grid>
+
+        <TextBlock Grid.Row="1" Text="{Binding DisplayName}" Foreground="{StaticResource Label}"
+                   FontSize="13" TextAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,8,0,0"/>
+
+        <TextBlock Grid.Row="2" Text="{Binding Status}" Foreground="{StaticResource SecondaryLabel}"
+                   FontSize="11" TextAlignment="Center" Margin="0,2,0,0"/>
+      </Grid>
+    </DataTemplate>
+  </Window.Resources>
+
+  <Border CornerRadius="14" Background="{StaticResource Background}"
+          BorderBrush="{StaticResource Separator}" BorderThickness="1">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+
+      <!-- Title bar. No system chrome, so it doubles as the drag handle. -->
+      <Grid Grid.Row="0" Height="44" Background="Transparent" MouseLeftButtonDown="OnTitleBarDrag">
+        <TextBlock Text="WinDrop" Foreground="{StaticResource Label}" FontSize="14" FontWeight="SemiBold"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <Button Content="✕" Width="30" Height="30" HorizontalAlignment="Right" Margin="0,0,10,0"
+                Background="Transparent" Foreground="{StaticResource SecondaryLabel}" BorderThickness="0"
+                FontSize="13" Cursor="Hand" Click="OnClose"/>
+      </Grid>
+
+      <!-- Drop target / selected files -->
+      <Border Grid.Row="1" Margin="16,4,16,12" CornerRadius="12" Background="{StaticResource Elevated}"
+              BorderBrush="{StaticResource Separator}" BorderThickness="1" Padding="16,14">
+        <StackPanel>
+          <TextBlock x:Name="FilesHeadline" Text="Drop files here to send"
+                     Foreground="{StaticResource Label}" FontSize="14" TextAlignment="Center"/>
+          <TextBlock x:Name="FilesDetail" Text="or click to choose"
+                     Foreground="{StaticResource SecondaryLabel}" FontSize="12" TextAlignment="Center" Margin="0,3,0,0"/>
+          <Button Content="Choose Files…" Style="{StaticResource PillButton}"
+                  Background="{StaticResource SystemBlue}" HorizontalAlignment="Center"
+                  Margin="0,12,0,0" Click="OnChooseFiles"/>
+        </StackPanel>
+      </Border>
+
+      <!-- Peers -->
+      <Grid Grid.Row="2" Margin="10,0">
+        <ItemsControl x:Name="PeerList" ItemTemplate="{StaticResource PeerTile}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel HorizontalAlignment="Center"/>
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+        </ItemsControl>
+
+        <StackPanel x:Name="EmptyState" VerticalAlignment="Center" HorizontalAlignment="Center">
+          <TextBlock Text="Looking for people nearby…" Foreground="{StaticResource SecondaryLabel}"
+                     FontSize="13" TextAlignment="Center"/>
+          <TextBlock Text="An iPhone will not appear — it needs AWDL." Foreground="#6E6E73"
+                     FontSize="11" TextAlignment="Center" Margin="0,6,0,0"/>
+        </StackPanel>
+      </Grid>
+
+      <!-- Status bar -->
+      <Border Grid.Row="3" Padding="16,10" BorderBrush="{StaticResource Separator}" BorderThickness="0,1,0,0">
+        <TextBlock x:Name="StatusText" Text="Starting…" Foreground="{StaticResource SecondaryLabel}" FontSize="11"/>
+      </Border>
+
+      <!-- Incoming request sheet -->
+      <Border x:Name="ConsentSheet" Grid.RowSpan="4" Background="#CC000000" Visibility="Collapsed">
+        <Border VerticalAlignment="Bottom" Margin="16" CornerRadius="14" Padding="20"
+                Background="{StaticResource Elevated}" BorderBrush="{StaticResource Separator}" BorderThickness="1">
+          <StackPanel>
+            <TextBlock x:Name="ConsentTitle" Foreground="{StaticResource Label}" FontSize="15"
+                       FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center"/>
+            <TextBlock x:Name="ConsentDetail" Foreground="{StaticResource SecondaryLabel}" FontSize="12"
+                       TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,18,0,0">
+              <Button Content="Decline" Style="{StaticResource PillButton}" Width="120"
+                      Background="#3A3A3C" Margin="0,0,10,0" Click="OnDecline"/>
+              <Button Content="Accept" Style="{StaticResource PillButton}" Width="120"
+                      Background="{StaticResource SystemBlue}" Click="OnAccept"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </Border>
+
+    </Grid>
+  </Border>
+</Window>

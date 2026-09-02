@@ -315,7 +315,14 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
     }
 
     Console.WriteLine($"Accepted. Uploading via {(session.UsesDvZip ? "DVZip" : "gzip")}...");
-    await session.UploadAsync(files, ct);
+    long totalBytes = files.Sum(f => new FileInfo(f.LocalPath).Length);
+    var progress = new Progress<long>(sent =>
+    {
+        if (totalBytes > 0) Console.Write($"\r  {sent * 100 / totalBytes,3}%");
+    });
+
+    await session.UploadAsync(files, progress, ct);
+    Console.WriteLine();
 
     Console.WriteLine("Done.");
     return 0;

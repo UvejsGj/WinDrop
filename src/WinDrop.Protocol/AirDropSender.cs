@@ -78,7 +78,10 @@ public sealed class AirDropSenderSession : IAsyncDisposable
     /// whole: the archive is produced straight into the compressor, which writes into
     /// the HTTP chunk writer as it goes.
     /// </summary>
-    public async Task UploadAsync(IReadOnlyList<AirDropOutgoingFile> files, CancellationToken ct = default)
+    public async Task UploadAsync(
+        IReadOnlyList<AirDropOutgoingFile> files,
+        IProgress<long>? progress = null,
+        CancellationToken ct = default)
     {
         if (!_accepted)
             throw new InvalidOperationException("Upload attempted before /Ask was accepted.");
@@ -99,14 +102,22 @@ public sealed class AirDropSenderSession : IAsyncDisposable
                         bodyStream, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true);
 
                 var archive = new CpioWriter(compressor);
+                long sent = 0;
 
                 foreach (AirDropOutgoingFile file in files)
                 {
                     var info = new FileInfo(file.LocalPath);
                     await using FileStream source = File.OpenRead(file.LocalPath);
 
+                    // Progress is measured on bytes read out of the source, not bytes
+                    // written to the socket: the compressor buffers, so socket writes
+                    // arrive in lumps that would make a progress bar stutter.
+                    await using Stream tracked = progress is null
+                        ? source
+                        : new CountingStream(source, n => progress.Report(Interlocked.Add(ref sent, n)));
+
                     await archive.WriteFileAsync(
-                        file.BomPath, source, info.Length,
+                        file.BomPath, tracked, info.Length,
                         modified: info.LastWriteTimeUtc, ct: token);
                 }
 
@@ -132,4 +143,28 @@ public sealed class AirDropSenderSession : IAsyncDisposable
     }
 
     public ValueTask DisposeAsync() => _connection.DisposeAsync();
+}
+
+/// <summary>Counts bytes as they are read, so a caller can show progress.</summary>
+internal sealed class CountingStream(Stream inner, Action<int> onRead) : Stream
+{
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+    {
+        int read = await inner.ReadAsync(buffer, ct);
+        if (read > 0) onRead(read);
+        return read;
+    }
+
+    public override int Read(byte[] buffer, int offset, int count) =>
+        ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => inner.Length;
+    public override long Position { get => inner.Position; set => throw new NotSupportedException(); }
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }

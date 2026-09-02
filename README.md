@@ -37,6 +37,7 @@ open question, and it is a hardware question, not a software one.
 
 ```
 dotnet build
+dotnet run --project src/WinDrop.App              # the GUI
 dotnet run --project src/WinDrop.Cli -- receive
 dotnet run --project src/WinDrop.Cli -- send path\to\file.jpg
 dotnet run --project src/WinDrop.Cli -- browse
@@ -113,6 +114,7 @@ src/WinDrop.Protocol/
   Dns/            DNS wire format for mDNS
   Discovery/      ITransport seam, mDNS, the infra-Wi-Fi transport
   AirDrop*.cs     the Discover/Ask/Upload state machine, both halves
+src/WinDrop.App/                    WPF desktop app, AirDrop-styled
 src/WinDrop.Cli/                    send / receive / browse
 src/WinDrop.Tools.ContinuitySniffer/  milestone 0 BLE capture
 src/WinDrop.Tools.ContactHash/        local contact-hash probe
