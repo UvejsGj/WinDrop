@@ -17,6 +17,9 @@ public partial class MainWindow : Window
     private readonly CancellationTokenSource _shutdown = new();
     private readonly List<string> _files = [];
 
+    // One sheet, so one prompt at a time even when transfers overlap.
+    private readonly SemaphoreSlim _consentGate = new(1, 1);
+
     private InfraWifiTransport? _transport;
     private X509Certificate2? _certificate;
     private TaskCompletionSource<bool>? _pendingConsent;
@@ -106,28 +109,35 @@ public partial class MainWindow : Window
         {
             await foreach (Stream raw in _transport!.AcceptAsync(record.Port, ct))
             {
-                try
-                {
-                    await using var ssl = await AirDropTls.AuthenticateAsServerAsync(raw, _certificate!, ct);
-                    AirDropTransferResult? result = await receiver.HandleConnectionAsync(ssl, ct);
-
-                    if (result is not null)
-                    {
-                        await Dispatcher.InvokeAsync(() =>
-                            SetStatus($"Received {result.Files.Count} file(s), {result.TotalBytes:N0} bytes"));
-                    }
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    await Dispatcher.InvokeAsync(() => SetStatus($"Transfer failed: {ex.Message}"));
-                }
-                finally
-                {
-                    await raw.DisposeAsync();
-                }
+                // Each connection gets its own task. Transfers can overlap; only the
+                // consent prompt is serialised, since there is one sheet to show it in.
+                _ = ServeAsync(receiver, raw, ct);
             }
         }
         catch (OperationCanceledException) { }
+    }
+
+    private async Task ServeAsync(AirDropReceiver receiver, Stream raw, CancellationToken ct)
+    {
+        try
+        {
+            await using var ssl = await AirDropTls.AuthenticateAsServerAsync(raw, _certificate!, ct);
+            AirDropTransferResult? result = await receiver.HandleConnectionAsync(ssl, ct);
+
+            if (result is not null)
+            {
+                await Dispatcher.InvokeAsync(() =>
+                    SetStatus($"Received {result.Files.Count} file(s), {result.TotalBytes:N0} bytes"));
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            await Dispatcher.InvokeAsync(() => SetStatus($"Transfer failed: {ex.Message}"));
+        }
+        finally
+        {
+            await raw.DisposeAsync();
+        }
     }
 
     /// <summary>
@@ -135,26 +145,35 @@ public partial class MainWindow : Window
     /// of the whole protocol — TLS authenticates nobody — so it blocks the transfer until
     /// a person actually answers, rather than defaulting either way on a timeout.
     /// </summary>
-    private Task<bool> AskUserAsync(AirDropAskRequest request, CancellationToken ct)
+    private async Task<bool> AskUserAsync(AirDropAskRequest request, CancellationToken ct)
     {
-        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await _consentGate.WaitAsync(ct);
 
-        Dispatcher.InvokeAsync(() =>
+        try
         {
-            _pendingConsent = completion;
+            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            string names = string.Join(", ", request.Files.Select(f => f.FileName));
+            await Dispatcher.InvokeAsync(() =>
+            {
+                _pendingConsent = completion;
 
-            ConsentTitle.Text = $"{request.SenderComputerName} would like to share";
-            ConsentDetail.Text = request.Files.Count == 1
-                ? names
-                : $"{request.Files.Count} items · {names}";
+                string names = string.Join(", ", request.Files.Select(f => f.FileName));
 
-            ConsentSheet.Visibility = Visibility.Visible;
-        });
+                ConsentTitle.Text = $"{request.SenderComputerName} would like to share";
+                ConsentDetail.Text = request.Files.Count == 1
+                    ? names
+                    : $"{request.Files.Count} items · {names}";
 
-        ct.Register(() => completion.TrySetResult(false));
-        return completion.Task;
+                ConsentSheet.Visibility = Visibility.Visible;
+            });
+
+            await using (ct.Register(() => completion.TrySetResult(false)))
+                return await completion.Task;
+        }
+        finally
+        {
+            _consentGate.Release();
+        }
     }
 
     private void OnAccept(object sender, RoutedEventArgs e) => ResolveConsent(true);

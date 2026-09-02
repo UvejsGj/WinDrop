@@ -102,22 +102,48 @@ public sealed class InfraWifiTransport : IAirDropTransport
         return message;
     }
 
+    /// <summary>
+    /// Addresses to publish. Prefers interfaces that have a default gateway, which
+    /// excludes virtual switches — the WSL adapter, Hyper-V, VM host-only networks —
+    /// whose addresses are unreachable from anywhere a real peer could be. A peer that
+    /// walks advertised addresses in order would otherwise stall on one of those before
+    /// reaching a useful one.
+    ///
+    /// Falls back to publishing everything when no interface has a gateway. An isolated
+    /// link is exactly the situation AirDrop exists for, and advertising nothing would be
+    /// worse than advertising too much.
+    /// </summary>
     private static IEnumerable<IPAddress> LocalAddresses()
     {
+        var routable = new List<IPAddress>();
+        var everything = new List<IPAddress>();
+
         foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
         {
             if (nic.OperationalStatus != OperationalStatus.Up) continue;
             if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
 
-            foreach (UnicastIPAddressInformation info in nic.GetIPProperties().UnicastAddresses)
+            IPInterfaceProperties properties = nic.GetIPProperties();
+
+            bool hasGateway = properties.GatewayAddresses.Any(g =>
+                g.Address is { } gateway
+                && !gateway.Equals(IPAddress.Any)
+                && !gateway.Equals(IPAddress.IPv6Any));
+
+            foreach (UnicastIPAddressInformation info in properties.UnicastAddresses)
             {
                 // Link-local IPv6 is what AirDrop actually uses, and a routable IPv4 is
                 // what makes the Mac BrowseAllInterfaces path work. Both are worth
                 // publishing; neither alone covers both peers we can reach.
-                if (info.Address.IsIPv6LinkLocal || info.Address.AddressFamily == AddressFamily.InterNetwork)
-                    yield return info.Address;
+                if (!info.Address.IsIPv6LinkLocal && info.Address.AddressFamily != AddressFamily.InterNetwork)
+                    continue;
+
+                everything.Add(info.Address);
+                if (hasGateway) routable.Add(info.Address);
             }
         }
+
+        return routable.Count > 0 ? routable : everything;
     }
 
     // ---- browsing ----------------------------------------------------------
