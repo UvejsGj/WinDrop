@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using WinDrop.Protocol;
 using WinDrop.Protocol.Discovery;
@@ -44,7 +45,7 @@ static int PrintUsage()
         WinDrop - an AirDrop implementation for Windows
 
           windrop receive [--dir <path>] [--yes]   advertise and accept transfers
-          windrop send [--to <name>] <file> [file...]  find a peer and send files
+          windrop send [--to <name>| --peer <host>] <file> [file...]
           windrop browse                   list nearby peers
 
         Reaches another WinDrop instance, opendrop, or a Mac with
@@ -180,12 +181,26 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
     // try to send a file literally named "foo".
     var paths = new List<string>();
     string? filter = null;
+    string? peerHost = null;
+    int peerPort = AirDropServiceRecord.DefaultPort;
 
     for (int i = 1; i < args.Length; i++)
     {
         if (string.Equals(args[i], "--to", StringComparison.OrdinalIgnoreCase))
         {
             if (++i < args.Length) filter = args[i];
+            continue;
+        }
+
+        if (string.Equals(args[i], "--peer", StringComparison.OrdinalIgnoreCase))
+        {
+            if (++i < args.Length) peerHost = args[i];
+            continue;
+        }
+
+        if (string.Equals(args[i], "--port", StringComparison.OrdinalIgnoreCase))
+        {
+            if (++i < args.Length) int.TryParse(args[i], out peerPort);
             continue;
         }
 
@@ -210,29 +225,54 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
 
     await using var transport = new InfraWifiTransport();
 
-    Console.WriteLine("Looking for a peer...");
-
-    using var window = CancellationTokenSource.CreateLinkedTokenSource(ct);
-    window.CancelAfter(TimeSpan.FromSeconds(15));
-
     AirDropPeer? target = null;
 
-    try
+    if (peerHost is not null)
     {
-        await foreach (AirDropPeer peer in transport.BrowseAsync(window.Token))
-        {
-            if (filter is not null
-                && !peer.InstanceName.Contains(filter, StringComparison.OrdinalIgnoreCase))
-            {
-                Console.WriteLine($"  skipping {peer.InstanceName} (does not match --to {filter})");
-                continue;
-            }
+        // Skip discovery entirely. Useful whenever multicast cannot reach the peer - a
+        // WSL NAT boundary, a router that drops mDNS - since the app-layer protocol is
+        // what this is meant to exercise, not our mDNS implementation.
+        IPAddress[] addresses = await Dns.GetHostAddressesAsync(peerHost, ct);
 
-            target = peer;
-            break;
+        if (addresses.Length == 0)
+        {
+            Console.Error.WriteLine($"Could not resolve '{peerHost}'.");
+            return 1;
         }
+
+        // Without a TXT record the peer's capabilities are unknown, so assume it
+        // supports nothing optional. That selects gzip over DVZip, which is the safe
+        // assumption about an implementation that never told us what it understands.
+        target = new AirDropPeer(
+            peerHost,
+            new IPEndPoint(addresses[0], peerPort),
+            AirDropReceiverFlags.None,
+            "direct");
     }
-    catch (OperationCanceledException) { }
+    else
+    {
+        Console.WriteLine("Looking for a peer...");
+
+        using var window = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        window.CancelAfter(TimeSpan.FromSeconds(15));
+
+        try
+        {
+            await foreach (AirDropPeer peer in transport.BrowseAsync(window.Token))
+            {
+                if (filter is not null
+                    && !peer.InstanceName.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"  skipping {peer.InstanceName} (does not match --to {filter})");
+                    continue;
+                }
+
+                target = peer;
+                break;
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
 
     if (target is null)
     {
