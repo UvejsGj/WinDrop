@@ -290,41 +290,87 @@ public class CpioOracleTests
 /// verifying an archive by hand with the obvious command gets the wrong format and a
 /// confusing mismatch. Rejecting odc loudly is correct behaviour, so it is pinned here.
 /// </summary>
+/// <summary>
+/// Both cpio variants must be readable. In libarchive, the format name "cpio" selects
+/// odc (magic 070707), NOT the newc/SVR4 variant (070701) that we write — and opendrop
+/// takes that default, so its uploads arrive as odc. Since opendrop interoperates with
+/// real Apple devices, rejecting odc would be stricter than the protocol actually is.
+///
+/// The two differ in more than a magic number: newc uses hexadecimal fields in a
+/// 110-byte header and pads both name and data to four bytes; odc uses octal fields in a
+/// 76-byte header and pads nothing.
+/// </summary>
 public class CpioVariantTests
 {
-    [Fact]
-    public async Task The_odc_variant_is_rejected_rather_than_misparsed()
+    private static string? FindTar()
     {
-        string tar = Path.Combine(Environment.SystemDirectory, "tar.exe");
-        if (!File.Exists(tar)) return;
+        string system = Path.Combine(Environment.SystemDirectory, "tar.exe");
+        return File.Exists(system) ? system : null;
+    }
 
-        string dir = Path.Combine(Path.GetTempPath(), $"windrop-odc-{Guid.NewGuid():N}");
+    [Theory]
+    [InlineData("newc")]
+    [InlineData("odc")]
+    public async Task Both_variants_are_read(string format)
+    {
+        string? tar = FindTar();
+        if (tar is null) return;
+
+        string dir = Path.Combine(Path.GetTempPath(), $"windrop-{format}-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
 
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(dir, "a.txt"), "hi");
-            string archivePath = Path.Combine(dir, "odc.cpio");
+            // Odd lengths so the padding rules diverge between the two formats: newc
+            // pads these, odc does not, and a reader that applies the wrong rule
+            // desynchronises on the second entry rather than the first.
+            await File.WriteAllTextAsync(Path.Combine(dir, "alpha.txt"), "12345");
+            await File.WriteAllTextAsync(Path.Combine(dir, "beta.txt"), "second-and-longer");
+
+            string archivePath = Path.Combine(dir, $"{format}.cpio");
 
             var process = Process.Start(new ProcessStartInfo(tar)
             {
-                ArgumentList = { "-c", "--format", "odc", "-f", archivePath, "-C", dir, "a.txt" },
+                ArgumentList = { "-c", "--format", format, "-f", archivePath, "-C", dir, "alpha.txt", "beta.txt" },
                 RedirectStandardError = true,
             })!;
 
+            string stderr = await process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
-            Assert.Equal(0, process.ExitCode);
+            Assert.True(process.ExitCode == 0, $"bsdtar could not write {format}:\n{stderr}");
 
             await using var file = File.OpenRead(archivePath);
             var reader = new CpioReader(file);
+            var seen = new Dictionary<string, string>();
 
-            var error = await Assert.ThrowsAsync<CpioFormatException>(() => reader.ReadNextAsync());
-            Assert.Contains("070707", error.Message);
+            while (await reader.ReadNextAsync() is { } entry)
+                seen[entry.Name] = Encoding.UTF8.GetString(await reader.ReadContentAsync());
+
+            Assert.Equal("12345", seen["alpha.txt"]);
+            Assert.Equal("second-and-longer", seen["beta.txt"]);
         }
         finally
         {
             try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
         }
+    }
+
+    [Fact]
+    public async Task An_unknown_magic_names_both_variants_in_the_error()
+    {
+        var output = new MemoryStream();
+        var writer = new CpioWriter(output);
+        await writer.WriteFileAsync("./a.txt", "x"u8.ToArray());
+        await writer.CompleteAsync();
+
+        byte[] archive = output.ToArray();
+        archive[3] = (byte)'9'; // 070701 -> 070901, neither variant
+
+        var reader = new CpioReader(new MemoryStream(archive));
+        var error = await Assert.ThrowsAsync<CpioFormatException>(() => reader.ReadNextAsync());
+
+        Assert.Contains("070701", error.Message);
+        Assert.Contains("070707", error.Message);
     }
 }
 

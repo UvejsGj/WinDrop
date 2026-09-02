@@ -51,6 +51,74 @@ those bytes so the next occurrence can be examined rather than counted.
 
 ### Observations
 
+#### 2026-09-02 — CONFIRMED: opendrop sending to us, and two real bugs found
+
+`opendrop send` to `windrop receive`, over IPv4 between WSL2 and the Windows host.
+64-byte file, byte-identical on arrival (MD5 `8e87b52c…` both sides). This is the
+direction that exercises our **readers**, and unlike the sending direction it did not
+work first time. It found two genuine defects.
+
+**Bug 1 — the upload compression is not signalled in a header.**
+
+opendrop sends only `Content-Type: application/x-cpio` and gzips the body regardless.
+It never sets `Content-Encoding`. Our receiver had been guessing from its own advertised
+capability flags: "we said we support DVZip, so this is probably DVZip." It was gzip.
+
+The failure named itself. The DVZip reader read the first four bytes as a block length
+and reported `Block of 529205248 bytes exceeds the 16777216 byte limit` — and
+529205248 is `0x1F8B0800`, the gzip magic read as a big-endian integer.
+
+Fixed by sniffing instead of guessing. All three encodings are self-identifying: gzip
+starts `1f 8b`, cpio starts with an ASCII magic, and anything else is DVZip, whose frame
+opens with a length rather than a recognisable constant. `Content-Encoding` is still
+read when a peer sends one, but it no longer gets the deciding vote — the bytes do.
+
+**Bug 2 — opendrop writes odc cpio, not newc.**
+
+Its uploads arrive with magic `070707`, and our reader accepted only `070701`. The cause
+is the libarchive trap already recorded here: opendrop calls
+`libarchive.custom_writer(..., "cpio", ...)`, and libarchive's format name `cpio` selects
+**odc**, not newc.
+
+Since opendrop interoperates with real Apple devices, odc must be acceptable to AirDrop,
+which makes a newc-only reader stricter than the protocol actually is. The reader now
+accepts both. They differ in more than a magic number: newc uses hexadecimal fields in a
+110-byte header and pads both name and data to four bytes; odc uses **octal** fields in a
+76-byte header and pads **nothing**. We continue to write newc, which opendrop reads
+without complaint.
+
+#### What the two directions together now cover
+
+| | WinDrop → opendrop | opendrop → WinDrop |
+|---|---|---|
+| bplist | writer | **reader** |
+| cpio | writer (newc) | **reader (odc)** |
+| compression | gzip encode | **gzip decode, sniffed** |
+| state machine | sender | **receiver, incl. consent gate** |
+| TLS + HTTP | client | **server** |
+
+Still untested against a third party: **mDNS discovery** and **DVZip**. Both transfers
+bypassed discovery with a hand-written peer address, and opendrop only ever speaks gzip,
+so our chunked-zlib framing has still never been read by anything but us.
+
+#### More opendrop facts worth recording
+
+- `opendrop send` has **no direct-address option**. It reads
+  `~/.opendrop/discover.last.json`, written by `opendrop find`, and `-r` selects an entry
+  from it by index, ID or name. Writing that file by hand is a clean way to bypass
+  discovery, which is how this test was run.
+- Its zeroconf is constructed `ip_version=IPVersion.V6Only`, bound to the interface's
+  link-local address. Under WSL mirrored networking, WSL and Windows share that address,
+  so opendrop sees our announcements as self-originated and discards them. Verified our
+  packets do arrive, and that standalone python-zeroconf parses them correctly — PTR,
+  SRV, TXT and both address records, `valid: True`. The records are fine; the address
+  collision is the problem.
+- It is broken with `libarchive-c` 5.x: it calls `ArchiveEntry(None, entry_p)` against a
+  constructor whose argument order has since changed, so the entry pointer lands in
+  `header_codec` and raises `TypeError: encode() argument 'encoding' must be str, not
+  int`. `pip install libarchive-c==2.9` fixes it.
+
+
 #### 2026-09-02 — CONFIRMED: full interop with opendrop
 
 WinDrop sender to `opendrop receive`, over IPv6 link-local between Windows and WSL2

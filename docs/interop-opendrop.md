@@ -184,9 +184,41 @@ md5sum ~/photo.jpg
 
 ## 5. Test B — opendrop sends, WinDrop receives
 
-Exercises our bplist *reader*, our cpio reader, and the path-traversal defence against
-names produced by software we did not write. **Needs mirrored networking** (Option B
-above), because opendrop has to discover us and offers no direct-address flag.
+**Status: passing as of 2026-09-02, after fixing two real bugs.** See
+[protocol-notes.md](protocol-notes.md).
+
+This is the direction that exercises our readers, and it is the one that found defects.
+
+Do **not** use mirrored networking for this. opendrop binds zeroconf `V6Only` to the
+interface's link-local address, and under mirrored networking WSL shares that address
+with Windows — so opendrop treats our announcements as its own and discards them. Stay
+on the default NAT mode, where the two have distinct addresses.
+
+`opendrop send` has no direct-address flag: it reads `~/.opendrop/discover.last.json`,
+written by `opendrop find`, and `-r` picks an entry out of it. Since discovery cannot
+cross the NAT boundary either, write that file by hand. Get the Windows-side address
+first — it is WSL's default gateway:
+
+```bash
+ip route | grep default
+```
+
+Then create the report, substituting that address:
+
+```bash
+mkdir -p ~/.opendrop
+cat > ~/.opendrop/discover.last.json <<'JSON'
+[{"name":"WinDrop","address":"172.27.48.1","port":8770,"id":"windroptestb","flags":10,"discoverable":true}]
+JSON
+```
+
+opendrop also needs an older libarchive binding — with 5.x it calls
+`ArchiveEntry(None, entry_p)` against a constructor whose argument order changed, and
+dies with `TypeError: encode() argument 'encoding' must be str, not int`:
+
+```bash
+~/od/bin/pip install 'libarchive-c==2.9'
+```
 
 On Windows:
 
@@ -197,12 +229,12 @@ dotnet run --project src\WinDrop.Cli -- receive
 In WSL:
 
 ```bash
-opendrop find -i eth0
-opendrop send -r <id-from-find> -f /path/to/file -i eth0
+opendrop send -r 0 -f ~/somefile.txt -i eth0
 ```
 
-Our receiver should print a consent prompt naming the sender and the file, then write it
-to `%USERPROFILE%\Downloads\WinDrop` once accepted.
+Expect `Uploading has been successful`, a consent prompt on our side, and the file in
+`%USERPROFILE%\Downloads\WinDrop`. Verify with `md5sum` and `Get-FileHash` rather than
+trusting the success message.
 
 ## 6. What is likely to break, and what each failure means
 

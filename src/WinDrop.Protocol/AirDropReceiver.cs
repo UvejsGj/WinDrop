@@ -125,21 +125,44 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
         HttpHeaders headers,
         CancellationToken ct)
     {
-        // How the body's compression is signalled is not fully pinned down. Content-
-        // Encoding is honoured when present; otherwise we assume the encoding we
-        // advertised, since a well-behaved sender picks from our capability flags.
-        string? encoding = headers["Content-Encoding"];
+        // The compression is NOT signalled in a header. opendrop sends only
+        // "Content-Type: application/x-cpio" and gzips the body regardless, and an
+        // earlier version of this code guessed from our own advertised capability
+        // flags — which fed a gzip stream to the DVZip reader, whose first "block
+        // length" came out as 0x1F8B0800, the gzip magic read as a big-endian int.
+        //
+        // All three encodings are self-identifying, so read the bytes instead of
+        // guessing. Content-Encoding is still honoured when a peer bothers to send it,
+        // but only as a cross-check we log, never as the deciding vote.
+        await using Stream rawBody = connection.OpenBody(headers);
+        var limited = new LimitedStream(rawBody, options.MaxUploadBytes);
 
-        bool isDvZip = encoding is null
-            ? options.Flags.HasFlag(AirDropReceiverFlags.SupportsDvZip)
-            : !encoding.Contains("gzip", StringComparison.OrdinalIgnoreCase);
+        var prefix = new byte[6];
+        int sniffed = 0;
 
-        await using Stream body = connection.OpenBody(headers);
+        while (sniffed < prefix.Length)
+        {
+            int read = await limited.ReadAsync(prefix.AsMemory(sniffed), ct);
+            if (read == 0) break;
+            sniffed += read;
+        }
 
-        // Decompression is streamed into a pipe rather than buffered: an AirDrop payload
-        // can be gigabytes and must never be held whole in memory.
+        Stream body = new PrefixedStream(prefix.AsMemory(0, sniffed), limited);
+
+        // gzip: 1f 8b. cpio newc: the ASCII magic "070701". Anything else is taken as
+        // DVZip, whose frame begins with a length rather than a recognisable magic.
+        bool isGzip = sniffed >= 2 && prefix[0] == 0x1F && prefix[1] == 0x8B;
+        bool isRawCpio = sniffed >= 6
+            && prefix[0] == (byte)'0' && prefix[1] == (byte)'7' && prefix[2] == (byte)'0'
+            && prefix[3] == (byte)'7' && prefix[4] == (byte)'0' && prefix[5] == (byte)'1';
+
         var archive = new MemoryStream();
-        await AirDropCompression.DecompressAsync(new LimitedStream(body, options.MaxUploadBytes), archive, isDvZip, ct);
+
+        if (isRawCpio)
+            await body.CopyToAsync(archive, ct);
+        else
+            await AirDropCompression.DecompressAsync(body, archive, isDvZip: !isGzip, ct);
+
         archive.Position = 0;
 
         Directory.CreateDirectory(options.DownloadDirectory);
@@ -256,6 +279,42 @@ internal sealed class LimitedStream(Stream inner, long limit) : Stream
     public override bool CanWrite => false;
     public override long Length => throw new NotSupportedException();
     public override long Position { get => _read; set => throw new NotSupportedException(); }
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Replays a handful of bytes already read from a stream, then continues with the rest.
+/// Needed because identifying the upload encoding means consuming its first bytes, and
+/// the decompressor still has to see them.
+/// </summary>
+internal sealed class PrefixedStream(ReadOnlyMemory<byte> prefix, Stream rest) : Stream
+{
+    private int _offset;
+
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+    {
+        if (_offset < prefix.Length)
+        {
+            int take = Math.Min(buffer.Length, prefix.Length - _offset);
+            prefix.Slice(_offset, take).CopyTo(buffer);
+            _offset += take;
+            return take;
+        }
+
+        return await rest.ReadAsync(buffer, ct);
+    }
+
+    public override int Read(byte[] buffer, int offset, int count) =>
+        ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
     public override void Flush() { }
     public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
     public override void SetLength(long value) => throw new NotSupportedException();

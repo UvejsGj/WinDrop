@@ -40,6 +40,15 @@ public static class CpioNewc
 {
     public const string TrailerName = "TRAILER!!!";
     internal const string Magic = "070701";
+
+    /// <summary>
+    /// POSIX.1 "odc". Not what we write, but what opendrop writes — libarchive's format
+    /// name "cpio" selects odc, not newc, and opendrop takes that default. Since opendrop
+    /// interoperates with real Apple devices, a receiver that rejects odc is stricter than
+    /// the protocol actually is.
+    /// </summary>
+    internal const string OdcMagic = "070707";
+    internal const int OdcHeaderLength = 76;
     internal const int HeaderLength = 110;
 
     internal static int PadTo4(long value) => (int)((4 - (value % 4)) % 4);
@@ -169,55 +178,111 @@ public sealed class CpioWriter(Stream output) : IAsyncDisposable
 public sealed class CpioReader(Stream input)
 {
     private long _entryRemaining;
-    private long _entrySize;
+    private long _entryPadding;
 
     /// <summary>
     /// Advances to the next member, returning null at the trailer. Any unread content
     /// from the previous member is skipped, so a caller may ignore entries it does not
     /// want without corrupting the stream position.
+    ///
+    /// Accepts both cpio variants. We write newc; opendrop writes odc, and odc is
+    /// evidently acceptable to Apple since opendrop interoperates with real devices.
+    /// The two differ in more than a magic number: newc uses hexadecimal fields in a
+    /// 110-byte header and pads both the name and the data to four bytes, while odc
+    /// uses octal fields in a 76-byte header and pads nothing.
     /// </summary>
     public async Task<CpioEntry?> ReadNextAsync(CancellationToken ct = default)
     {
-        await SkipAsync(_entryRemaining + CpioNewc.PadTo4(_entrySize), ct);
+        await SkipAsync(_entryRemaining + _entryPadding, ct);
         _entryRemaining = 0;
-        _entrySize = 0;
+        _entryPadding = 0;
 
-        var header = new byte[CpioNewc.HeaderLength];
-        int read = await ReadUpToAsync(header, ct);
+        var magic = new byte[6];
+        int read = await ReadUpToAsync(magic, ct);
 
         if (read == 0) throw new CpioFormatException("Archive ended without a TRAILER!!! member.");
-        if (read < header.Length) throw new CpioFormatException("Truncated header.");
+        if (read < magic.Length) throw new CpioFormatException("Truncated header.");
 
-        string text = Encoding.ASCII.GetString(header);
-        if (!text.StartsWith(CpioNewc.Magic, StringComparison.Ordinal))
-            throw new CpioFormatException($"Bad magic '{text[..Math.Min(6, text.Length)]}'; expected {CpioNewc.Magic}.");
+        string magicText = Encoding.ASCII.GetString(magic);
 
-        int mode = (int)Field(text, 1);
-        long mtime = Field(text, 5);
-        long size = Field(text, 6);
-        long nameSize = Field(text, 11);
+        return magicText switch
+        {
+            CpioNewc.Magic => await ReadNewcAsync(ct),
+            CpioNewc.OdcMagic => await ReadOdcAsync(ct),
+            _ => throw new CpioFormatException(
+                $"Bad magic '{magicText}'; expected {CpioNewc.Magic} (newc) or {CpioNewc.OdcMagic} (odc)."),
+        };
+    }
 
+    private async Task<CpioEntry?> ReadNewcAsync(CancellationToken ct)
+    {
+        var rest = new byte[CpioNewc.HeaderLength - 6];
+        await ReadExactlyAsync(rest, ct);
+
+        string text = Encoding.ASCII.GetString(rest);
+
+        int mode = (int)Hex(text, 1);
+        long mtime = Hex(text, 5);
+        long size = Hex(text, 6);
+        long nameSize = Hex(text, 11);
+
+        Validate(nameSize, size);
+
+        string name = await ReadNameAsync(nameSize, ct);
+        await SkipAsync(CpioNewc.PadTo4(CpioNewc.HeaderLength + nameSize), ct);
+
+        if (name == CpioNewc.TrailerName) return null;
+
+        _entryRemaining = size;
+        _entryPadding = CpioNewc.PadTo4(size);
+
+        return new CpioEntry(name, mode, size, mtime);
+    }
+
+    private async Task<CpioEntry?> ReadOdcAsync(CancellationToken ct)
+    {
+        var rest = new byte[CpioNewc.OdcHeaderLength - 6];
+        await ReadExactlyAsync(rest, ct);
+
+        string text = Encoding.ASCII.GetString(rest);
+
+        // Offsets within the header after the magic: dev, ino, mode, uid, gid, nlink and
+        // rdev are six octal digits each; mtime and filesize are eleven; namesize is six.
+        int mode = (int)Octal(text, 12, 6);
+        long mtime = Octal(text, 42, 11);
+        long nameSize = Octal(text, 53, 6);
+        long size = Octal(text, 59, 11);
+
+        Validate(nameSize, size);
+
+        string name = await ReadNameAsync(nameSize, ct);
+
+        // odc pads neither the name nor the data.
+        if (name == CpioNewc.TrailerName) return null;
+
+        _entryRemaining = size;
+        _entryPadding = 0;
+
+        return new CpioEntry(name, mode, size, mtime);
+    }
+
+    private static void Validate(long nameSize, long size)
+    {
         if (nameSize is < 1 or > 4096)
             throw new CpioFormatException($"Implausible name length {nameSize}.");
         if (size < 0)
             throw new CpioFormatException($"Negative file size {size}.");
+    }
 
+    private async Task<string> ReadNameAsync(long nameSize, CancellationToken ct)
+    {
         var nameBytes = new byte[nameSize];
         await ReadExactlyAsync(nameBytes, ct);
 
         if (nameBytes[^1] != 0)
             throw new CpioFormatException("Entry name is not NUL-terminated.");
 
-        string name = Encoding.UTF8.GetString(nameBytes, 0, nameBytes.Length - 1);
-
-        await SkipAsync(CpioNewc.PadTo4(CpioNewc.HeaderLength + nameSize), ct);
-
-        if (name == CpioNewc.TrailerName) return null;
-
-        _entrySize = size;
-        _entryRemaining = size;
-
-        return new CpioEntry(name, mode, size, mtime);
+        return Encoding.UTF8.GetString(nameBytes, 0, nameBytes.Length - 1);
     }
 
     public async Task<byte[]> ReadContentAsync(CancellationToken ct = default)
@@ -228,13 +293,30 @@ public sealed class CpioReader(Stream input)
         return content;
     }
 
-    private static long Field(string header, int index)
+    private static long Hex(string header, int index)
     {
-        ReadOnlySpan<char> field = header.AsSpan(6 + index * 8, 8);
+        ReadOnlySpan<char> field = header.AsSpan(index * 8, 8);
 
         return long.TryParse(field, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out long value)
             ? value
             : throw new CpioFormatException($"Field {index} is not hexadecimal: '{field}'.");
+    }
+
+    private static long Octal(string header, int offset, int length)
+    {
+        ReadOnlySpan<char> field = header.AsSpan(offset, length);
+        long value = 0;
+
+        foreach (char c in field)
+        {
+            if (c == ' ' || c == '\0') continue;
+            if (c is < '0' or > '7')
+                throw new CpioFormatException($"Field at {offset} is not octal: '{field}'.");
+
+            value = (value << 3) + (c - '0');
+        }
+
+        return value;
     }
 
     private async Task<int> ReadUpToAsync(Memory<byte> buffer, CancellationToken ct)
