@@ -6,16 +6,84 @@ using WinDrop.Protocol.Plist;
 
 namespace WinDrop.Protocol;
 
-/// <summary>A local file paired with the name it will carry inside the archive.</summary>
+/// <summary>
+/// One entry as it will appear inside the cpio archive. <see cref="LocalPath"/> is null
+/// for directories, which carry no content of their own.
+/// </summary>
+public sealed record ArchiveMember(string? LocalPath, string BomPath, bool IsDirectory, long Length);
+
+/// <summary>
+/// A selected item paired with the name it will carry inside the archive.
+///
+/// A selection is one item as the user sees it — a file, or a folder — and that is what
+/// the receiver is asked to consent to. The archive underneath may hold many more
+/// entries: a folder expands to itself plus everything beneath it, with paths relative
+/// to the folder so the tree survives the transfer.
+/// </summary>
 public sealed record AirDropOutgoingFile(string LocalPath, string FileName, string? FileType = null)
 {
-    public static AirDropOutgoingFile FromPath(string path) =>
-        new(path, Path.GetFileName(path));
+    public static AirDropOutgoingFile FromPath(string path)
+    {
+        // A trailing separator would make GetFileName return empty for a directory.
+        string trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return new AirDropOutgoingFile(path, Path.GetFileName(trimmed));
+    }
+
+    public bool IsDirectory => Directory.Exists(LocalPath);
 
     public string BomPath => $"./{FileName}";
 
-    public AirDropFileEntry ToEntry() =>
-        new(FileName, FileType ?? AirDropFileEntry.DefaultFileType, BomPath);
+    public AirDropFileEntry ToEntry() => new(
+        FileName,
+        FileType ?? (IsDirectory ? "public.folder" : AirDropFileEntry.DefaultFileType),
+        BomPath,
+        IsDirectory);
+
+    public long TotalBytes => EnumerateMembers().Sum(m => m.Length);
+
+    /// <summary>
+    /// Flattens this selection into archive entries, depth first and parents before
+    /// children — a receiver creating directories as it goes needs them in that order.
+    /// </summary>
+    public IEnumerable<ArchiveMember> EnumerateMembers()
+    {
+        if (!IsDirectory)
+        {
+            yield return new ArchiveMember(LocalPath, BomPath, false, new FileInfo(LocalPath).Length);
+            yield break;
+        }
+
+        yield return new ArchiveMember(null, BomPath, true, 0);
+
+        foreach (ArchiveMember member in Walk(LocalPath, BomPath))
+            yield return member;
+    }
+
+    private static IEnumerable<ArchiveMember> Walk(string directory, string bomPrefix)
+    {
+        foreach (string child in Directory.EnumerateDirectories(directory))
+        {
+            var info = new DirectoryInfo(child);
+
+            // Reparse points are junctions and symlinks. Following them can loop forever,
+            // and can also reach outside the tree the user actually chose to send.
+            if (info.Attributes.HasFlag(FileAttributes.ReparsePoint)) continue;
+
+            string bom = $"{bomPrefix}/{info.Name}";
+            yield return new ArchiveMember(null, bom, true, 0);
+
+            foreach (ArchiveMember member in Walk(child, bom))
+                yield return member;
+        }
+
+        foreach (string child in Directory.EnumerateFiles(directory))
+        {
+            var info = new FileInfo(child);
+            if (info.Attributes.HasFlag(FileAttributes.ReparsePoint)) continue;
+
+            yield return new ArchiveMember(child, $"{bomPrefix}/{info.Name}", false, info.Length);
+        }
+    }
 }
 
 /// <summary>
@@ -74,7 +142,7 @@ public sealed class AirDropSenderSession : IAsyncDisposable
     }
 
     /// <summary>
-    /// Streams the files as cpio, compressed, in a chunked body. Nothing is buffered
+    /// Streams the selection as cpio, compressed, in a chunked body. Nothing is buffered
     /// whole: the archive is produced straight into the compressor, which writes into
     /// the HTTP chunk writer as it goes.
     /// </summary>
@@ -89,8 +157,9 @@ public sealed class AirDropSenderSession : IAsyncDisposable
         var headers = new HttpHeaders();
         headers.Set("Content-Type", "application/x-cpio");
 
-        // Say which encoding was used rather than leaving the receiver to infer it from
-        // its own advertised flags.
+        // Say which encoding was used rather than leaving the receiver to infer it. Note
+        // a real peer may send nothing here at all — opendrop does not — so a receiver
+        // must not depend on this header being present.
         headers.Set("Content-Encoding", UsesDvZip ? "dvzip" : "gzip");
 
         await _connection.WriteStreamingRequestAsync("POST", "/Upload", headers,
@@ -106,19 +175,28 @@ public sealed class AirDropSenderSession : IAsyncDisposable
 
                 foreach (AirDropOutgoingFile file in files)
                 {
-                    var info = new FileInfo(file.LocalPath);
-                    await using FileStream source = File.OpenRead(file.LocalPath);
+                    foreach (ArchiveMember member in file.EnumerateMembers())
+                    {
+                        if (member.IsDirectory)
+                        {
+                            await archive.WriteDirectoryAsync(member.BomPath, token);
+                            continue;
+                        }
 
-                    // Progress is measured on bytes read out of the source, not bytes
-                    // written to the socket: the compressor buffers, so socket writes
-                    // arrive in lumps that would make a progress bar stutter.
-                    await using Stream tracked = progress is null
-                        ? source
-                        : new CountingStream(source, n => progress.Report(Interlocked.Add(ref sent, n)));
+                        var info = new FileInfo(member.LocalPath!);
+                        await using FileStream source = File.OpenRead(member.LocalPath!);
 
-                    await archive.WriteFileAsync(
-                        file.BomPath, tracked, info.Length,
-                        modified: info.LastWriteTimeUtc, ct: token);
+                        // Progress is measured on bytes read out of the source, not bytes
+                        // written to the socket: the compressor buffers, so socket writes
+                        // arrive in lumps that would make a progress bar stutter.
+                        await using Stream tracked = progress is null
+                            ? source
+                            : new CountingStream(source, n => progress.Report(Interlocked.Add(ref sent, n)));
+
+                        await archive.WriteFileAsync(
+                            member.BomPath, tracked, info.Length,
+                            modified: info.LastWriteTimeUtc, ct: token);
+                    }
                 }
 
                 await archive.CompleteAsync(token);

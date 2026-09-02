@@ -190,7 +190,7 @@ public partial class MainWindow : Window
     private async Task SendToAsync(PeerViewModel peer)
     {
         var outgoing = _files.Select(AirDropOutgoingFile.FromPath).ToList();
-        long total = outgoing.Sum(f => new FileInfo(f.LocalPath).Length);
+        long total = outgoing.Sum(f => f.TotalBytes);
 
         peer.State = PeerState.Sending;
         peer.Progress = 0;
@@ -267,8 +267,8 @@ public partial class MainWindow : Window
     {
         // Directories would need to be walked into cpio entries with their own paths;
         // that is real work, so refuse them clearly rather than silently dropping them.
-        string[] files = paths.Where(File.Exists).ToArray();
-        int rejected = paths.Count() - files.Length;
+        string[] files = paths.Where(p => File.Exists(p) || Directory.Exists(p)).ToArray();
+        int missing = paths.Count() - files.Length;
 
         _files.Clear();
         _files.AddRange(files);
@@ -287,14 +287,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        long bytes = _files.Sum(f => new FileInfo(f).Length);
+        long bytes = _files.Sum(f => AirDropOutgoingFile.FromPath(f).TotalBytes);
 
         FilesHeadline.Text = _files.Count == 1
             ? Path.GetFileName(_files[0])
             : $"{_files.Count} files";
 
-        FilesDetail.Text = rejected > 0
-            ? $"{bytes:N0} bytes · {rejected} folder(s) skipped · tap someone to send"
+        FilesDetail.Text = missing > 0
+            ? $"{bytes:N0} bytes · {missing} item(s) missing · tap someone to send"
             : $"{bytes:N0} bytes · tap someone to send";
     }
 

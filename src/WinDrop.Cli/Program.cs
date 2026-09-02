@@ -217,7 +217,7 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
 
     foreach (string path in paths)
     {
-        if (File.Exists(path)) continue;
+        if (File.Exists(path) || Directory.Exists(path)) continue;
 
         Console.Error.WriteLine($"Not found: {path}");
         return 1;
@@ -315,7 +315,7 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
     }
 
     Console.WriteLine($"Accepted. Uploading via {(session.UsesDvZip ? "DVZip" : "gzip")}...");
-    long totalBytes = files.Sum(f => new FileInfo(f.LocalPath).Length);
+    long totalBytes = files.Sum(f => f.TotalBytes);
     var progress = new Progress<long>(sent =>
     {
         if (totalBytes > 0) Console.Write($"\r  {sent * 100 / totalBytes,3}%");
