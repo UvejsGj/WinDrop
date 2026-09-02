@@ -7,7 +7,7 @@ protocol. Learning project: understanding over shortcuts, no wrapping of existin
 
 | Milestone | State |
 |---|---|
-| 0. Capture Apple's Continuity BLE beacon on Windows | **in progress** |
+| 0. Capture Apple's Continuity BLE beacon on Windows | tool built; TLV parsing confirmed against real Apple traffic. AirDrop `0x05` beacon not yet captured |
 | 1. Repo scaffold + transport seam | done (scaffold) |
 | 2. Binary plist (`bplist00`) encode/decode | not started |
 | 3. Self-signed TLS + minimal HTTP/1.1 | not started |
@@ -35,6 +35,42 @@ src/WinDrop.Tools.ContinuitySniffer/   milestone 0 capture tool (WinRT BLE)
 docs/                               ADRs and reverse-engineering notes
 captures/                           raw JSONL captures (gitignored)
 ```
+
+## Environment prerequisite: Smart App Control
+
+**Smart App Control (SAC) must be off on the development machine.**
+
+SAC allows binaries by cloud reputation. A freshly compiled assembly has no reputation,
+so it is blocked at load with:
+
+```
+System.IO.FileLoadException: ... An Application Control policy has blocked this file. (0x800711C7)
+```
+
+Every rebuild produces a new hash, so this recurs unpredictably — one build runs, the
+next does not. Check the current state with:
+
+```powershell
+(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy').VerifiedAndReputablePolicyState
+# 0 = Off, 1 = Enforced, 2 = Evaluation
+```
+
+Turn it off under: Settings > Privacy & security > Windows Security >
+App & browser control > Smart App Control settings > Off.
+
+**This is a one-way door.** Windows does not allow SAC to be re-enabled afterwards
+without resetting or reinstalling Windows. Microsoft's own guidance is that SAC is not
+intended for machines used to build software. The alternatives are worse for this
+project specifically: code-signing with a certificate SAC already trusts needs a
+reputation-bearing commercial cert, and moving development into a VM cuts off the
+Bluetooth and Wi-Fi radio access that every milestone here depends on.
+
+Ruled out as a workaround: driving the WinRT BLE APIs from Windows PowerShell 5.1 to
+avoid compiling anything. PowerShell's in-box WinRT projection cannot subscribe to WinRT
+events at all (`Register-ObjectEvent` fails with "Windows PowerShell cannot subscribe to
+Windows RT events"), and `BluetoothLEAdvertisementWatcher.Start()` refuses to run
+without a `Received` handler. `Add-Type` would compile an assembly and hit the same SAC
+block.
 
 ## Running milestone 0
 

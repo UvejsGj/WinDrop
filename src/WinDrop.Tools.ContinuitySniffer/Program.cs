@@ -13,6 +13,12 @@ using WinDrop.Protocol.Discovery;
 bool showAll = args.Contains("--all");
 bool verbose = args.Contains("--verbose");
 
+// Bounded capture, so a run is repeatable and scriptable rather than needing Ctrl+C.
+int seconds = 0;
+int secondsIdx = Array.IndexOf(args, "--seconds");
+if (secondsIdx >= 0 && secondsIdx + 1 < args.Length)
+    int.TryParse(args[secondsIdx + 1], out seconds);
+
 string captureDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "captures");
 Directory.CreateDirectory(captureDir);
 string capturePath = Path.Combine(captureDir, $"continuity-{DateTime.Now:yyyyMMdd-HHmmss}.jsonl");
@@ -42,7 +48,7 @@ watcher.Received += (_, e) =>
         byte[] data = ReadBuffer(mfr.Data);
         total++;
 
-        var messages = ContinuityParser.Parse(data, out int tail);
+        var messages = ContinuityParser.Parse(data, out byte[] tail);
 
         // iOS randomises its BLE address, so this is not a stable device identity —
         // it rotates roughly every 15 minutes. Key the dedup on address+payload so a
@@ -68,7 +74,7 @@ watcher.Received += (_, e) =>
                 type = $"0x{msg.Type:X2}",
                 typeName = msg.TypeName,
                 detail = record,
-                unparsedTail = tail,
+                unparsedTail = Convert.ToHexString(tail),
             }, jsonOpts));
 
             if (isNew || verbose)
@@ -109,7 +115,15 @@ catch (Exception ex)
 }
 
 watcher.Start();
-await done.Task;
+if (seconds > 0)
+{
+    Console.WriteLine($"(auto-stopping after {seconds}s)");
+    await Task.WhenAny(done.Task, Task.Delay(TimeSpan.FromSeconds(seconds)));
+}
+else
+{
+    await done.Task;
+}
 watcher.Stop();
 await capture.FlushAsync();
 
@@ -120,7 +134,7 @@ Console.WriteLine($"\nSaved: {Path.GetFullPath(capturePath)}");
 
 return 0;
 
-static void PrintLine(BluetoothLEAdvertisementReceivedEventArgs e, string addr, ContinuityMessage msg, int tail)
+static void PrintLine(BluetoothLEAdvertisementReceivedEventArgs e, string addr, ContinuityMessage msg, byte[] tail)
 {
     string when = e.Timestamp.LocalDateTime.ToString("HH:mm:ss");
     string prefix = $"[{when}] {addr}  rssi={e.RawSignalStrengthInDBm,4}  {msg.TypeName,-24}";
@@ -138,8 +152,8 @@ static void PrintLine(BluetoothLEAdvertisementReceivedEventArgs e, string addr, 
         Console.WriteLine($"{prefix} raw={msg.PayloadHex}");
     }
 
-    if (tail > 0)
-        Console.WriteLine($"           ^ {tail} trailing byte(s) could not be parsed as TLV");
+    if (tail.Length > 0)
+        Console.WriteLine($"           ^ {tail.Length} unparsed trailing byte(s): {Convert.ToHexString(tail)}");
 }
 
 static object Describe(AirDropBeacon b) => new

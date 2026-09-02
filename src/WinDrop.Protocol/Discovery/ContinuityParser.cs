@@ -71,10 +71,10 @@ public static class ContinuityParser
     /// <summary>
     /// Splits Apple manufacturer data into its TLV records. A single advertisement can
     /// carry several Continuity messages back to back. Returns what it could parse and
-    /// reports any trailing bytes it could not — a truncated tail is itself a finding,
+    /// returns any trailing bytes it could not parse — a truncated tail is itself a finding,
     /// so we surface it instead of swallowing it.
     /// </summary>
-    public static IReadOnlyList<ContinuityMessage> Parse(ReadOnlySpan<byte> data, out int unparsedTailBytes)
+    public static IReadOnlyList<ContinuityMessage> Parse(ReadOnlySpan<byte> data, out byte[] unparsedTail)
     {
         var messages = new List<ContinuityMessage>();
         int i = 0;
@@ -91,7 +91,7 @@ public static class ContinuityParser
             i += 2 + length;
         }
 
-        unparsedTailBytes = data.Length - i;
+        unparsedTail = data[i..].ToArray();
         return messages;
     }
 
