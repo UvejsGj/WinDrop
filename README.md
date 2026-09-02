@@ -131,7 +131,13 @@ wrong in a way that round-trips through itself perfectly:
   (Note: `tar --format cpio` means *odc*, magic `070707`. AirDrop uses *newc*, `070701`.
   Use `--format newc`.)
 - **The Continuity beacon** — captured from a real iPhone, not taken from a write-up.
-- **The full stack** — verified end to end over real mDNS, TLS and TCP.
+- **The full stack** — a real transfer to **opendrop**, an independent implementation of
+  the same protocol, arriving byte-identical. This exercises the bplist writer and
+  reader, TLS, HTTP framing, the state machine, cpio and gzip all at once, against code
+  written by people who read the protocol separately from us.
+
+What none of this proves is Apple compatibility: opendrop is a reimplementation, so a
+shared misreading of Apple would pass unnoticed. Only an Apple device settles that.
 
 Where an oracle exists it is used. Where one does not — DVZip's framing, the exact
 compression signalling on `/Upload` — the source says so explicitly rather than implying
