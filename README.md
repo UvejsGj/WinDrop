@@ -7,34 +7,60 @@ protocol. Learning project: understanding over shortcuts, no wrapping of existin
 
 | Milestone | State |
 |---|---|
-| 0. Capture Apple's Continuity BLE beacon on Windows | **done** — beacon captured on iOS 26.6, contact-hash field confirmed |
-| 1. Repo scaffold + transport seam | done |
-| 2. Binary plist (`bplist00`) encode/decode | **done** — 39 tests, differentially checked against Python plistlib |
-| 3. Self-signed TLS + minimal HTTP/1.1 | not started |
-| 4. Discover -> Ask -> Upload state machine | not started |
-| 5. DVZip chunked compression + CPIO `newc` | not started |
-| 6. Transport decision (see ADR-001) | **blocked on milestone 0 findings** |
+| 0. Capture Apple's Continuity BLE beacon | **done** — captured on iOS 26.6, contact-hash field confirmed |
+| 1. Repo scaffold + transport seam | **done** |
+| 2. Binary plist (`bplist00`) encode/decode | **done** — differentially checked against Python `plistlib` |
+| 3. Self-signed TLS + minimal HTTP/1.1 | **done** |
+| 4. Discover → Ask → Upload state machine | **done** — full transfer verified end to end |
+| 5. DVZip compression + CPIO `newc` archive | **done** — CPIO checked against bsdtar/libarchive |
+| 6. Reaching an iPhone | **blocked** — needs AWDL, see [ADR-001](docs/adr-001-transport-selection.md) |
+
+143 tests, all passing.
 
 ## The one thing to understand first
 
 AirDrop's discovery runs over **AWDL**, a second Wi-Fi link layer that time-slices the
-radio against your normal AP connection on a synchronized schedule. Windows' NDIS stack
-exposes no way to drive the 802.11 MAC that way, and iOS implements no alternative
-transport (it has never supported Wi-Fi Direct). See
-[ADR-001](docs/adr-001-transport-selection.md) for the full argument and the options.
+radio against your normal AP connection on a schedule synchronised across every Apple
+device in range. Windows' NDIS stack exposes no way to drive the 802.11 MAC that way,
+and iOS implements no alternative — it has never supported Wi-Fi Direct, and binds
+AirDrop's browser to `awdl0` with no override.
 
-Everything above the link layer — bplist, TLS, HTTP, the state machine, DVZip, CPIO — is
-transport-agnostic and is being built first, behind an `ITransport` seam.
+This was argued structurally in [ADR-001](docs/adr-001-transport-selection.md) and then
+confirmed by measurement: the captured beacon is 18 bytes, every one of them accounted
+for, with no field in which to name a channel, an address or a transport. **The beacon
+cannot redirect a peer anywhere.** It can only mean "wake AWDL".
 
-## Layout
+So everything above the link layer is built, tested and working. The link layer is the
+open question, and it is a hardware question, not a software one.
+
+## Running it
 
 ```
-src/WinDrop.Protocol/               pure protocol, no Windows dependencies
-  Discovery/ContinuityParser.cs     Apple BLE Continuity TLV parsing
-src/WinDrop.Tools.ContinuitySniffer/   milestone 0 capture tool (WinRT BLE)
-docs/                               ADRs and reverse-engineering notes
-captures/                           raw JSONL captures (gitignored)
+dotnet build
+dotnet run --project src/WinDrop.Cli -- receive
+dotnet run --project src/WinDrop.Cli -- send path\to\file.jpg
+dotnet run --project src/WinDrop.Cli -- browse
 ```
+
+`receive` takes `--dir <path>` and `--yes` (skip the consent prompt — it is the only
+real security boundary in the protocol, so only for scripted testing).
+
+**Who this reaches:** another WinDrop instance, opendrop, or a Mac started with
+`defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
+
+**Who it does not reach:** an iPhone. See above.
+
+### Milestone 0 tools
+
+```
+dotnet run --project src/WinDrop.Tools.ContinuitySniffer -- --seconds 30
+dotnet run --project src/WinDrop.Tools.ContactHash -- --observed HSH1,PHON <identifier>
+```
+
+The sniffer captures Apple Continuity BLE advertisements to `captures/*.jsonl`; open a
+share sheet on an iPhone and tap AirDrop while it runs. `contact-hash` tests whether a
+contact identifier reproduces a hash prefix seen in a beacon — it runs entirely locally
+and prints only digest prefixes, so an identifier never has to leave the machine.
 
 ## Environment prerequisite: Smart App Control
 
@@ -72,14 +98,41 @@ Windows RT events"), and `BluetoothLEAdvertisementWatcher.Start()` refuses to ru
 without a `Received` handler. `Add-Type` would compile an assembly and hit the same SAC
 block.
 
-## Running milestone 0
+Python 3.12 is also needed to regenerate the bplist test fixtures, but not to run the
+tests — the fixtures are committed.
+
+## Layout
 
 ```
-dotnet run --project src/WinDrop.Tools.ContinuitySniffer
+src/WinDrop.Protocol/
+  Plist/          bplist00 reader and writer
+  Http/           minimal HTTP/1.1 client and server over one owned connection
+  Tls/            self-signed certificates and the no-validation TLS setup
+  Archive/        CPIO newc reader and writer
+  Compression/    DVZip chunked zlib, gzip fallback
+  Dns/            DNS wire format for mDNS
+  Discovery/      ITransport seam, mDNS, the infra-Wi-Fi transport
+  AirDrop*.cs     the Discover/Ask/Upload state machine, both halves
+src/WinDrop.Cli/                    send / receive / browse
+src/WinDrop.Tools.ContinuitySniffer/  milestone 0 BLE capture
+src/WinDrop.Tools.ContactHash/        local contact-hash probe
+tools/plist_oracle.py               plistlib fixtures and differential oracle
+docs/                               ADRs and reverse-engineering notes
 ```
 
-Then on the iPhone: open any share sheet and tap AirDrop. The phone begins broadcasting
-its Continuity beacon; green lines are AirDrop (type `0x05`). `--all` widens the scan
-beyond Apple, `--verbose` prints every repeat rather than only new payloads.
+## On testing
 
-Raw captures land in `captures/` as JSONL for later analysis.
+Layers are checked against implementations we did not write, because a codec can be
+wrong in a way that round-trips through itself perfectly:
+
+- **bplist** — fixtures generated by Python `plistlib`, and `plistlib` reads back what
+  our writer emits.
+- **CPIO** — bsdtar/libarchive extracts our archives, and we read archives it produces.
+  (Note: `tar --format cpio` means *odc*, magic `070707`. AirDrop uses *newc*, `070701`.
+  Use `--format newc`.)
+- **The Continuity beacon** — captured from a real iPhone, not taken from a write-up.
+- **The full stack** — verified end to end over real mDNS, TLS and TCP.
+
+Where an oracle exists it is used. Where one does not — DVZip's framing, the exact
+compression signalling on `/Upload` — the source says so explicitly rather than implying
+more confidence than the evidence supports.

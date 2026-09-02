@@ -314,6 +314,7 @@ public sealed class HttpConnection(Stream stream, bool ownsStream = true) : IAsy
 /// <summary>Body delimited by Content-Length. Ends exactly at the declared length.</summary>
 internal sealed class FixedLengthReadStream(HttpConnection connection, long length) : Stream
 {
+    private readonly long _length = length;
     private long _remaining = length;
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
@@ -336,8 +337,8 @@ internal sealed class FixedLengthReadStream(HttpConnection connection, long leng
     public override bool CanRead => true;
     public override bool CanSeek => false;
     public override bool CanWrite => false;
-    public override long Length => length;
-    public override long Position { get => length - _remaining; set => throw new NotSupportedException(); }
+    public override long Length => _length;
+    public override long Position { get => _length - _remaining; set => throw new NotSupportedException(); }
     public override void Flush() { }
     public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
     public override void SetLength(long value) => throw new NotSupportedException();
