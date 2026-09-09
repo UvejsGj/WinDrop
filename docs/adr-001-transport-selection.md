@@ -87,6 +87,13 @@ still won't browse AirDrop on that interface.)
 
 ### 4. `sharingd` binds AirDrop to AWDL — with one exception, and it isn't iOS
 
+**Measured on 2026-09-09, not merely asserted.** A passive mDNS sniff of the
+ordinary network — with a WinDrop receiver alongside as a positive control, after a
+first attempt returned a false negative from joining multicast on the wrong
+interface — found every AirDrop name on the wire to be ours. Several Apple devices
+were present and none mentioned AirDrop. Actively querying twelve Apple service
+types produced one answer: our own. See protocol-notes.md.
+
 macOS has an undocumented override that makes the AirDrop browser use every interface
 instead of just `awdl0`:
 

@@ -51,6 +51,43 @@ those bytes so the next occurrence can be examined rather than counted.
 
 ### Observations
 
+#### 2026-09-09 — MEASURED: iOS really does keep AirDrop off ordinary Wi-Fi
+
+ADR-001 asserted from documentation that iOS advertises AirDrop only on `awdl0`. That
+was reasoned, never measured. It is now measured, with `tools/mdns_sniff.py` and
+`tools/mdns_probe.py`.
+
+**A false negative caught first.** The initial attempt reported zero services and zero
+packets on a LAN that demonstrably carries mDNS. The cause was joining the multicast
+group on `INADDR_ANY`, which picks one interface by routing and had picked a virtual
+adapter. A negative result from an uncalibrated instrument is worthless, so the test was
+re-run with a WinDrop receiver alongside as a **positive control** and the group joined
+on the real adapter by address.
+
+With the control visible, the negative means something:
+
+```
+22 packets from 5 sources
+192.168.1.6   UVEJSLAPTOP-a242d3._airdrop._tcp.local.   <- our control, instrument works
+192.168.1.9   ?_companion-link._tcp  ?_rdlink._tcp
+192.168.1.10  ?_companion-link._tcp  ?_rdlink._tcp
+192.168.1.89  ?_companion-link._tcp  ?_rdlink._tcp
+192.168.1.8   ?_airplay._tcp  ?_raop._tcp  ?_airplay-bds._tcp
+```
+
+Every AirDrop name on the wire is ours. Several Apple devices are present and talking,
+and none of them mentions AirDrop.
+
+Actively querying twelve Apple service types — airdrop, companion-link, rdlink, airplay,
+raop, apple-mobdev2, touch-able, sleep-proxy, smb, afpovertcp, ipp, ipps — produced
+exactly one answer, again our own service. The Apple devices *browse* for
+companion-link and rdlink but advertise nothing reachable.
+
+**Conclusion.** There is no hidden AirDrop-over-infrastructure channel to piggyback on,
+and no other open Apple service on the link to borrow. The AWDL requirement is real, and
+ADR-001's central claim now rests on measurement rather than on reading.
+
+
 #### 2026-09-02 — CONFIRMED: mDNS records resolve in a third-party browser
 
 `tools/mdns_browse.py` drives python-zeroconf, an independent mDNS implementation,
