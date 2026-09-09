@@ -24,28 +24,56 @@ Measured on 2026-09-09, WSL2 kernel `6.18.33.2-microsoft-standard-WSL2`:
 So exactly one driver module has to be built. Not a kernel — a module, against a kernel
 whose config is already on disk at `/proc/config.gz`.
 
-## Phase 0 — what to buy
+## Phase 0 — what to use, when you cannot get an AR9271
 
-**Recommendation: an AR9271 adapter** (Alfa AWUS036NHA, or any "ath9k_htc" dongle), ~$20.
+The AR9271 is what most AWDL write-ups name, but it is one specific USB part and not
+stocked everywhere. Rather than a shopping list, here is the criterion, because it is
+testable on whatever you can actually obtain.
 
-The reasoning, since it is not obvious:
+### The criterion: active monitor mode
 
-- OWL is developed and tested against Atheros, and every published AWDL result uses it.
-  That matters more than spec sheets.
-- OWL asks for *active* monitor mode, which `ath9k_htc` does not advertise. It is
-  probably still fine: OWL calls the absence a throughput problem rather than a failure,
-  and Vanhoef's injection survey found Atheros dongles acknowledge frames in practice
-  anyway.
-- MediaTek `mt76` supports active monitor mode properly and is dual-band, which makes it
-  look better on paper. Nobody has run OWL on it. Both need a driver built, so the
-  usual reason to prefer MediaTek — better in-tree support — does not apply here.
+Injection alone is not enough. [OWL issue #61](https://github.com/seemoo-lab/owl/issues/61)
+reports an Atheros card with working `aireplay` injection that still could not run OWL —
+and the one capability it lacked was active monitor mode, where the card acknowledges
+frames it receives. That issue is unresolved, so treat this as the best available
+evidence rather than a settled answer, but it is the sharpest signal there is.
 
-Known risk either way: stock `ath9k_htc` firmware rewrites the sequence and fragment
-numbers of injected frames. Whether AWDL tolerates that is unknown. Patched firmware
-exists if it turns out to matter.
+So, with any candidate plugged into Linux:
 
-The AR9271 is 2.4 GHz only. AWDL's social channels are 6, 44 and 149, so you would be
-limited to the 2.4 GHz rendezvous on channel 6. That generally works for discovery.
+```bash
+sudo iw list | grep -A10 "Supported interface modes"   # must include: monitor
+sudo iw phy phy0 info | grep -i "active monitor"       # the discriminator
+```
+
+A card that shows both is worth trying. A card that shows monitor but not active monitor
+may still work — OWL calls the absence a throughput problem, and Atheros dongles are
+reported to acknowledge frames in practice regardless — but it is a gamble.
+
+### Options, cheapest first
+
+**1. The Broadcom you already own.** An old laptop's built-in card, driven by `b43`,
+which supports monitor mode and injection on many BCM43xx parts. Costs nothing, and a
+Linux live USB does not need the machine's Windows password. Run the two commands above.
+If they pass, buy nothing.
+
+**2. A Raspberry Pi.** Kali's `brcmfmac-nexmon-dkms` and `firmware-nexmon` packages give
+monitor mode and frame injection on the built-in radio of the Pi 5, 4, 3B, Zero 2 W and
+Zero W. Pis are stocked far more widely than any particular USB chipset, and this needs
+no dongle and no driver compilation. Active monitor support is unverified — run the
+check.
+
+**3. A MediaTek `mt76` adapter** (MT7612U, MT7921AU). Vanhoef's injection survey lists
+`mt76` and `mt7601u` as supporting active monitor mode outright, which is exactly the
+capability the ath5k reporter lacked. These are sold as ordinary dual-band dongles almost
+everywhere. Untested with OWL, but it advertises the right thing.
+
+**4. An AR9271 ordered online.** Ubiquitous on the international marketplaces for around
+ten dollars even where local shops have none. Slowest, but it is the family OWL is
+actually developed against, and that counts for more than a specification sheet.
+
+Note that options 1 and 2 avoid the driver build in Phase 2 entirely, since `b43` and
+`brcmfmac` ship differently — check whether your kernel already has them before assuming
+you need to compile anything.
 
 ## Phase 1 — pass the adapter into WSL2
 
