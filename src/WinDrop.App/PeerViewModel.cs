@@ -64,12 +64,24 @@ public sealed class PeerViewModel : INotifyPropertyChanged
 
     public bool ShowRing => State is PeerState.Sending or PeerState.Sent;
 
+    /// <summary>
+    /// State is signalled by value, not hue — there is no green or red to reach for.
+    /// Success is full white, in progress slightly held back, and a failure recedes
+    /// rather than shouting. The status text carries the words; this carries the weight.
+    /// </summary>
     public Brush RingBrush => State switch
     {
-        PeerState.Sent => new SolidColorBrush(Color.FromRgb(0x30, 0xD1, 0x58)),
-        PeerState.Failed or PeerState.Declined => new SolidColorBrush(Color.FromRgb(0xFF, 0x45, 0x3A)),
-        _ => new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)),
+        PeerState.Sent => Frozen(1.0),
+        PeerState.Failed or PeerState.Declined => Frozen(0.28),
+        _ => Frozen(0.8),
     };
+
+    private static Brush Frozen(double opacity)
+    {
+        var brush = new SolidColorBrush(Colors.White) { Opacity = opacity };
+        brush.Freeze();
+        return brush;
+    }
 
     /// <summary>
     /// Instance names carry a disambiguating suffix that is noise to a human reader —

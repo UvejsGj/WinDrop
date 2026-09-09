@@ -33,6 +33,10 @@ public partial class MainWindow : Window
         _peers.CollectionChanged += (_, _) =>
             EmptyState.Visibility = _peers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
+        // The HWND does not exist until SourceInitialized, and applying the backdrop
+        // after first render leaves a visible flash of the fallback colour.
+        SourceInitialized += (_, _) => WindowBackdrop.Apply(this);
+
         Loaded += OnLoaded;
         Closed += (_, _) => _shutdown.Cancel();
     }

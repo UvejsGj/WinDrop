@@ -4,35 +4,114 @@
              StartupUri="MainWindow.xaml">
   <Application.Resources>
 
-    <!-- Apple's dark-mode system palette. These are colour values, not assets. -->
-    <SolidColorBrush x:Key="Background" Color="#1C1C1E"/>
-    <SolidColorBrush x:Key="Elevated" Color="#2C2C2E"/>
-    <SolidColorBrush x:Key="Separator" Color="#38383A"/>
-    <SolidColorBrush x:Key="Label" Color="#FFFFFF"/>
-    <SolidColorBrush x:Key="SecondaryLabel" Color="#98989F"/>
-    <SolidColorBrush x:Key="SystemBlue" Color="#0A84FF"/>
-    <SolidColorBrush x:Key="SystemGreen" Color="#30D158"/>
-    <SolidColorBrush x:Key="SystemRed" Color="#FF453A"/>
+    <!--
+      Monochrome. Every surface is white at a low alpha over the DWM acrylic backdrop,
+      which is what makes it read as glass rather than as grey paint: the value shifts
+      with whatever is behind the window instead of staying put.
 
-    <LinearGradientBrush x:Key="AvatarFill" StartPoint="0,0" EndPoint="0,1">
-      <GradientStop Color="#5E5CE6" Offset="0"/>
-      <GradientStop Color="#0A84FF" Offset="1"/>
+      Nothing here is opaque except text. An opaque panel would punch a hole in the
+      backdrop and the illusion goes with it.
+    -->
+
+    <SolidColorBrush x:Key="Glass"        Color="#FFFFFF" Opacity="0.055"/>
+    <SolidColorBrush x:Key="GlassRaised"  Color="#FFFFFF" Opacity="0.10"/>
+    <SolidColorBrush x:Key="GlassHover"   Color="#FFFFFF" Opacity="0.16"/>
+    <SolidColorBrush x:Key="Hairline"     Color="#FFFFFF" Opacity="0.14"/>
+    <SolidColorBrush x:Key="HairlineSoft" Color="#FFFFFF" Opacity="0.07"/>
+
+    <SolidColorBrush x:Key="Label"          Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="SecondaryLabel" Color="#FFFFFF" Opacity="0.55"/>
+    <SolidColorBrush x:Key="TertiaryLabel"  Color="#FFFFFF" Opacity="0.32"/>
+
+    <SolidColorBrush x:Key="Ink" Color="#0A0A0A"/>
+
+    <!--
+      The specular edge. A real pane of glass catches light along its top edge and loses
+      it toward the bottom; a flat 1px border reads as a drawn rectangle instead. This
+      gradient is doing most of the work of making a flat panel look like a solid.
+    -->
+    <LinearGradientBrush x:Key="GlassEdge" StartPoint="0,0" EndPoint="0.35,1">
+      <GradientStop Color="#59FFFFFF" Offset="0"/>
+      <GradientStop Color="#1AFFFFFF" Offset="0.35"/>
+      <GradientStop Color="#0DFFFFFF" Offset="1"/>
     </LinearGradientBrush>
 
-    <Style x:Key="PillButton" TargetType="Button">
-      <Setter Property="Foreground" Value="White"/>
-      <Setter Property="FontSize" Value="14"/>
+    <!-- Sheen laid over a surface, brightest at the top where light would enter. -->
+    <LinearGradientBrush x:Key="GlassSheen" StartPoint="0,0" EndPoint="0,1">
+      <GradientStop Color="#1FFFFFFF" Offset="0"/>
+      <GradientStop Color="#00FFFFFF" Offset="0.55"/>
+    </LinearGradientBrush>
+
+    <!-- Avatars are glass discs, not coloured ones. The initials carry the identity. -->
+    <RadialGradientBrush x:Key="AvatarGlass" GradientOrigin="0.3,0.2" Center="0.5,0.5" RadiusX="0.75" RadiusY="0.75">
+      <GradientStop Color="#33FFFFFF" Offset="0"/>
+      <GradientStop Color="#14FFFFFF" Offset="1"/>
+    </RadialGradientBrush>
+
+    <!-- Primary action: solid white on black. In monochrome, weight replaces hue. -->
+    <Style x:Key="PrimaryButton" TargetType="Button">
+      <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+      <Setter Property="FontSize" Value="13"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Chrome" CornerRadius="10" Background="{TemplateBinding Background}" Padding="18,9">
+            <Border x:Name="Chrome" CornerRadius="9" Background="#FFFFFF" Padding="20,9">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Chrome" Property="Opacity" Value="0.85"/>
+                <Setter TargetName="Chrome" Property="Opacity" Value="0.86"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Chrome" Property="Opacity" Value="0.7"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Secondary action: the glass itself, outlined. -->
+    <Style x:Key="GlassButton" TargetType="Button">
+      <Setter Property="Foreground" Value="{StaticResource Label}"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontWeight" Value="Medium"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Chrome" CornerRadius="9" Padding="20,9"
+                    Background="{StaticResource GlassRaised}"
+                    BorderBrush="{StaticResource Hairline}" BorderThickness="1">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource GlassHover}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Window chrome buttons: no fill until hovered, so they stay out of the way. -->
+    <Style x:Key="ChromeButton" TargetType="Button">
+      <Setter Property="Foreground" Value="{StaticResource SecondaryLabel}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Chrome" CornerRadius="7" Background="Transparent" Width="30" Height="30">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource GlassHover}"/>
+                <Setter Property="Foreground" Value="{StaticResource Label}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
