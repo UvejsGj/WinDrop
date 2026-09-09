@@ -24,6 +24,74 @@ Measured on 2026-09-09, WSL2 kernel `6.18.33.2-microsoft-standard-WSL2`:
 So exactly one driver module has to be built. Not a kernel — a module, against a kernel
 whose config is already on disk at `/proc/config.gz`.
 
+## Phase -1 — answer the whole question first, for free
+
+**Do this before buying anything or touching WSL.**
+
+The experiment that decides whether this project has a future needs only a Linux machine
+with a capable radio. It does not need Windows, WSL, usbipd, a compiled driver, the
+bridge daemon, or any WinDrop code. Everything in phases 1 to 4 exists solely to let
+WinDrop *use* a radio once you know a radio is worth having.
+
+Kali packages OWL, so there is nothing to build.
+
+### Make the stick
+
+Download the **Kali Linux Live** image and write it with [Rufus](https://rufus.ie). On a
+large stick, give it a **persistence partition** — 16 GB is ample — so packages you
+install survive a reboot. Without it, every reboot starts from nothing, which is
+miserable across a multi-step procedure.
+
+If an old laptop refuses to boot it, set Rufus to **MBR / BIOS** rather than GPT/UEFI.
+Machines of the Windows 7 era usually want legacy boot.
+
+### Try both radios you already own
+
+Boot the stick and run, on each machine:
+
+```bash
+lspci -nn | grep -i net          # or lsusb, for a dongle
+sudo iw list | grep -A10 "Supported interface modes"
+sudo iw phy phy0 info | grep -i "active monitor"
+```
+
+**The main desktop first.** Its Intel AX211 is a dead end *on Windows*, but `iwlwifi` on
+a modern kernel does support monitor mode and injection, with caveats. If it shows what
+OWL needs, the entire hardware problem disappears — for this experiment at least.
+
+**Then the old laptop.** Its Broadcom, via `b43`. A live USB does not need the Windows
+password that previously blocked identifying the chip.
+
+Either card passing means the experiment costs nothing.
+
+### Run the experiment
+
+```bash
+sudo apt update && sudo apt install -y owl
+sudo owl -i wlan0
+```
+
+In a second terminal, confirm the radio now exists:
+
+```bash
+ip addr show awdl0        # expect an fe80:: address
+```
+
+Then:
+
+```bash
+pipx install opendrop || pip install opendrop
+opendrop find -i awdl0
+```
+
+On the iPhone: open a share sheet, tap AirDrop, leave it open, AirDrop set to Everyone.
+
+- **The iPhone appears** → the protocol is alive. Now the rest of this document is worth
+  doing, because now it is worth getting the radio to Windows.
+- **It does not** → that is the answer. Check the ten-minute Everyone timeout first,
+  since its symptom is identical, then record the result in
+  [protocol-notes.md](protocol-notes.md). Nothing else in this document will help.
+
 ## Phase 0 — what to use, when you cannot get an AR9271
 
 The AR9271 is what most AWDL write-ups name, but it is one specific USB part and not
