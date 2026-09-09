@@ -45,7 +45,7 @@ miserable across a multi-step procedure.
 If an old laptop refuses to boot it, set Rufus to **MBR / BIOS** rather than GPT/UEFI.
 Machines of the Windows 7 era usually want legacy boot.
 
-### Try both radios you already own
+### Try both radios you already own — the spare machine first
 
 Boot the stick and run, on each machine:
 
@@ -55,14 +55,23 @@ sudo iw list | grep -A10 "Supported interface modes"
 sudo iw phy phy0 info | grep -i "active monitor"
 ```
 
-**The main desktop first.** Its Intel AX211 is a dead end *on Windows*, but `iwlwifi` on
-a modern kernel does support monitor mode and injection, with caveats. If it shows what
-OWL needs, the entire hardware problem disappears — for this experiment at least.
+**Start with the spare laptop**, not the main desktop. Even if the desktop's card turns
+out to be capable, it can never be the bridge: the bridge has to run Linux *while*
+Windows runs WinDrop, and one machine cannot do both. The desktop can only answer the
+yes/no question. The spare answers the same question and is the machine that would
+actually hold the radio afterwards.
 
-**Then the old laptop.** Its Broadcom, via `b43`. A live USB does not need the Windows
-password that previously blocked identifying the chip.
+A live USB never mounts or writes to the installed system, so a machine whose Windows
+password has been forgotten is still perfectly usable here.
 
-Either card passing means the experiment costs nothing.
+Its Broadcom is driven by `b43`, which supports monitor mode and injection on many
+BCM43xx parts. Kali ships more non-free firmware than Ubuntu does, which matters for
+Broadcom specifically — if Wi-Fi does not come up at all, that is usually why, and it is
+worth checking `dmesg | grep -i firmware` before concluding the card is unsuitable.
+
+**Then the main desktop, if you want a second data point.** Its Intel card is a dead end
+*on Windows*, but `iwlwifi` on a modern kernel does support monitor mode and injection,
+with caveats. Useful for answering the question early; not a solution.
 
 ### Run the experiment
 
