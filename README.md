@@ -53,6 +53,11 @@ real security boundary in the protocol, so only for scripted testing).
 
 ### Bridge transport
 
+Getting the hardware working is written up in
+[bridge-hardware-setup.md](docs/bridge-hardware-setup.md) — including the finding that
+WSL2 already ships `vhci-hcd`, `cfg80211` and `mac80211`, so a USB adapter can be
+passed into WSL and only one driver module needs building. No second machine.
+
 When the hardware exists, `--bridge <host>` routes everything through a Linux box
 running OWL:
 
