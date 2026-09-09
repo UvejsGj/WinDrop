@@ -102,7 +102,7 @@ The icon is generated rather than committed as an opaque binary:
 
 ```
 dotnet run --project src/WinDrop.Tools.ContinuitySniffer -- --seconds 30
-dotnet run --project src/WinDrop.Tools.ContactHash -- --observed HSH1,PHON <identifier>
+dotnet run --project src/WinDrop.Tools.ContactHash -- --observed 1A2B,3C4D <identifier>
 ```
 
 The sniffer captures Apple Continuity BLE advertisements to `captures/*.jsonl`; open a

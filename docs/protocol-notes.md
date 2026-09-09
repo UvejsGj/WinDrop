@@ -51,6 +51,19 @@ those bytes so the next occurrence can be examined rather than counted.
 
 ### Observations
 
+> **A note on the redactions below.** The captured beacon carries four two-byte values,
+> two of which are truncated SHA-256 digests of the capturing device owner's own contact
+> identifiers. Publishing them would let anyone who already had a candidate email or
+> phone number confirm it, so they appear here as placeholders: `HSH1` and `HSH2` for the
+> two that were never attributed, `PHON` and `MAIL` for the two that were, and `p1`–`p4`
+> for the unexplained four-byte prefix. Byte-level diffs use per-byte placeholders of the
+> same width.
+>
+> Nothing analytical is lost. Which values held position, which swapped, which were
+> identified and by what normalisation are all still legible — arguably more so, since
+> the placeholders say what each slot turned out to be.
+
+
 #### 2026-09-09 — MEASURED: iOS really does keep AirDrop off ordinary Wi-Fi
 
 ADR-001 asserted from documentation that iOS advertises AirDrop only on `awdl0`. That

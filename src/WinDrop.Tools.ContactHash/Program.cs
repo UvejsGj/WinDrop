@@ -8,7 +8,7 @@ if (args.Length == 0)
 {
     Console.WriteLine("""
         Usage:
-          contact-hash --observed HSH1,PHON,HSH2,MAIL <identifier> [identifier...]
+          contact-hash --observed 1A2B,3C4D <identifier> [identifier...]
 
         Identifiers are Apple IDs, email addresses or phone numbers to test against the
         hash prefixes seen in an AirDrop beacon. Try the phone number in whatever form
