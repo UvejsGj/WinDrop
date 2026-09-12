@@ -5,7 +5,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using Microsoft.Win32;
+using WinDrop.App.Glass;
 using WinDrop.Protocol;
 using WinDrop.Protocol.Discovery;
 using WinDrop.Protocol.Tls;
@@ -14,8 +16,17 @@ namespace WinDrop.App;
 
 public partial class MainWindow : Window
 {
-    private const double SelectionPreviewBox = 84;
-    private const double ConsentPreviewBox = 116;
+    private const double SelectionPreviewBox = 50;
+    private const double ConsentPreviewBox = 120;
+
+    // The radar's centre in window coordinates. See the layer notes in MainWindow.xaml.
+    private const double RadarX = 220;
+    private const double RadarY = 300;
+    private const double PeerOrbit = 150;
+
+    // Top of the orbit first, then spreading down both sides, so the first few people land
+    // where the eye already is and nobody sits on top of this device's own label.
+    private static readonly double[] PeerAngles = [-90, -142, -38, 180, 0, 142, 38];
 
     private readonly ObservableCollection<PeerViewModel> _peers = [];
     private readonly CancellationTokenSource _shutdown = new();
@@ -38,16 +49,22 @@ public partial class MainWindow : Window
     // rather than asked of the visual tree at the time.
     private double _dpiScale = 1;
 
+    private CancellationTokenSource? _toastTimer;
+
     public MainWindow()
     {
         InitializeComponent();
+
         PeerList.ItemsSource = _peers;
+        LocalName.Text = Environment.MachineName;
 
         _peers.CollectionChanged += (_, _) =>
+        {
             EmptyState.Visibility = _peers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            LayoutPeers();
+        };
 
-        // The HWND does not exist until SourceInitialized, and applying the backdrop
-        // after first render leaves a visible flash of the fallback colour.
+        // The HWND does not exist until SourceInitialized.
         SourceInitialized += (_, _) =>
         {
             WindowBackdrop.Apply(this);
@@ -68,6 +85,11 @@ public partial class MainWindow : Window
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        StartSceneMotion();
+
+        if (!LiquidGlassEffect.IsAvailable)
+            SetStatus($"Plain glass: {LiquidGlassEffect.UnavailableReason}");
+
         _downloadDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "WinDrop");
 
@@ -92,11 +114,83 @@ public partial class MainWindow : Window
             _ = BrowseLoopAsync(_shutdown.Token);
             _ = ReceiveLoopAsync(record, flags, _shutdown.Token);
 
-            SetStatus($"Discoverable as {instance} · saving to {_downloadDirectory}");
+            DiscoverabilityText.Text = "Visible to everyone nearby";
         }
         catch (Exception ex)
         {
+            DiscoverabilityText.Text = "Not discoverable";
             SetStatus($"Could not start: {ex.Message}");
+        }
+    }
+
+    // ---- scene -------------------------------------------------------------
+
+    private void StartSceneMotion()
+    {
+        Drift(AmbientA, 80, 60, 17);
+        Drift(AmbientB, -70, -80, 21);
+        Drift(AmbientC, 60, -50, 26);
+
+        var pulses = new[] { PulseA, PulseB, PulseC };
+
+        for (int i = 0; i < pulses.Length; i++)
+        {
+            var scale = new ScaleTransform(0.2, 0.2);
+            pulses[i].RenderTransform = scale;
+
+            var begin = TimeSpan.FromSeconds(i * 1.5);
+            var duration = TimeSpan.FromSeconds(4.5);
+
+            var grow = new DoubleAnimation(0.18, 1.0, duration)
+            {
+                BeginTime = begin,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+            };
+
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
+
+            pulses[i].BeginAnimation(OpacityProperty, new DoubleAnimation(0.7, 0, duration)
+            {
+                BeginTime = begin,
+                RepeatBehavior = RepeatBehavior.Forever,
+            });
+        }
+    }
+
+    private static void Drift(UIElement element, double dx, double dy, double seconds)
+    {
+        var offset = new TranslateTransform();
+        element.RenderTransform = offset;
+
+        var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
+
+        offset.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, dx, TimeSpan.FromSeconds(seconds))
+        {
+            AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease,
+        });
+
+        offset.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, dy, TimeSpan.FromSeconds(seconds * 1.37))
+        {
+            AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease,
+        });
+    }
+
+    private void OnPointerMoved(object sender, MouseEventArgs e) =>
+        GlassPanel.LightPosition = e.GetPosition(Scene);
+
+    private void LayoutPeers()
+    {
+        for (int i = 0; i < _peers.Count; i++)
+        {
+            bool firstOrbit = i < PeerAngles.Length;
+            double radius = firstOrbit ? PeerOrbit : PeerOrbit + 50;
+            double angle = (PeerAngles[i % PeerAngles.Length] + (firstOrbit ? 0 : 22)) * Math.PI / 180;
+
+            // The tile is 120 wide with the bubble's centre 42 down from its top.
+            _peers[i].X = RadarX + radius * Math.Cos(angle) - 60;
+            _peers[i].Y = RadarY + radius * Math.Sin(angle) - 42;
         }
     }
 
@@ -161,7 +255,7 @@ public partial class MainWindow : Window
             if (result is not null)
             {
                 await Dispatcher.InvokeAsync(() =>
-                    SetStatus($"Received {result.Files.Count} file(s), {result.TotalBytes:N0} bytes"));
+                    SetStatus($"Saved {result.Files.Count} item(s) to Downloads › WinDrop"));
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -198,15 +292,15 @@ public partial class MainWindow : Window
 
                 string names = string.Join(", ", request.Files.Select(f => f.FileName));
 
-                ConsentTitle.Text = $"{request.SenderComputerName} would like to share";
+                ConsentTitle.Text = request.SenderComputerName;
                 ConsentDetail.Text = request.Files.Count == 1
-                    ? names
-                    : $"{request.Files.Count} items · {names}";
+                    ? $"wants to share “{names}”"
+                    : $"wants to share {request.Files.Count} items · {names}";
 
                 ConsentPreview.ItemsSource = preview is null ? null : PreviewItem.Stack([preview], ConsentPreviewBox);
                 ConsentPreview.Visibility = preview is null ? Visibility.Collapsed : Visibility.Visible;
 
-                ConsentSheet.Visibility = Visibility.Visible;
+                ShowConsentSheet();
             });
 
             await using (ct.Register(() => completion.TrySetResult(false)))
@@ -244,13 +338,43 @@ public partial class MainWindow : Window
 
     private void ResolveConsent(bool accepted)
     {
-        ConsentSheet.Visibility = Visibility.Collapsed;
-        ConsentPreview.ItemsSource = null;
-
         _pendingConsent?.TrySetResult(accepted);
         _pendingConsent = null;
 
-        SetStatus(accepted ? "Accepted — receiving…" : "Declined");
+        HideConsentSheet();
+        SetStatus(accepted ? "Receiving…" : "Declined");
+    }
+
+    private void ShowConsentSheet()
+    {
+        ConsentSheet.Visibility = Visibility.Visible;
+
+        ConsentScrim.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(260)));
+
+        ConsentSlide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(480, 0, TimeSpan.FromMilliseconds(560))
+        {
+            EasingFunction = new BackEase { Amplitude = 0.22, EasingMode = EasingMode.EaseOut },
+        });
+    }
+
+    private void HideConsentSheet()
+    {
+        var slide = new DoubleAnimation(520, TimeSpan.FromMilliseconds(320))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+        };
+
+        slide.Completed += (_, _) =>
+        {
+            // Another request may have opened the sheet again while this one slid away.
+            if (_pendingConsent is not null) return;
+
+            ConsentSheet.Visibility = Visibility.Collapsed;
+            ConsentPreview.ItemsSource = null;
+        };
+
+        ConsentSlide.BeginAnimation(TranslateTransform.YProperty, slide);
+        ConsentScrim.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(320)));
     }
 
     // ---- sending -----------------------------------------------------------
@@ -332,7 +456,7 @@ public partial class MainWindow : Window
 
     private void OnChooseFiles(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Multiselect = true, Title = "Choose files to send" };
+        var dialog = new OpenFileDialog { Multiselect = true, Title = "Choose files to share" };
         if (dialog.ShowDialog(this) != true) return;
 
         SetFiles(dialog.FileNames);
@@ -344,10 +468,39 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    private void OnDragEnter(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(DataFormats.FileDrop)) SetDropTargetActive(true);
+    }
+
+    private void OnDragLeave(object sender, DragEventArgs e)
+    {
+        // DragLeave also fires every time the pointer crosses from one child element into
+        // another. Only a pointer that has actually left the window ends the highlight.
+        Point p = e.GetPosition(this);
+        if (p.X > 0 && p.Y > 0 && p.X < ActualWidth && p.Y < ActualHeight) return;
+
+        SetDropTargetActive(false);
+    }
+
     private void OnFilesDropped(object sender, DragEventArgs e)
     {
+        SetDropTargetActive(false);
+
         if (e.Data.GetData(DataFormats.FileDrop) is string[] paths)
             SetFiles(paths);
+    }
+
+    private void SetDropTargetActive(bool active)
+    {
+        var spring = new DoubleAnimation(active ? 1.04 : 1.0, TimeSpan.FromMilliseconds(450))
+        {
+            EasingFunction = new BackEase { Amplitude = 0.5, EasingMode = EasingMode.EaseOut },
+        };
+
+        TrayScale.BeginAnimation(ScaleTransform.ScaleXProperty, spring);
+        TrayScale.BeginAnimation(ScaleTransform.ScaleYProperty, spring);
+        Tray.BeginAnimation(GlassPanel.HighlightProperty, new DoubleAnimation(active ? 1 : 0, TimeSpan.FromMilliseconds(250)));
     }
 
     private void SetFiles(IEnumerable<string> paths)
@@ -362,6 +515,7 @@ public partial class MainWindow : Window
 
         PreviewStack.ItemsSource = null;
         PreviewStack.Visibility = Visibility.Collapsed;
+        TrayPlaceholder.Visibility = Visibility.Visible;
 
         foreach (PeerViewModel peer in _peers)
         {
@@ -374,8 +528,8 @@ public partial class MainWindow : Window
         {
             _fileIcon = Task.FromResult<byte[]?>(null);
             ChooseButton.Content = "Choose";
-            FilesHeadline.Text = "Drop files here";
-            FilesDetail.Text = "folders welcome";
+            FilesHeadline.Text = "Drop files to share";
+            FilesDetail.Text = "or choose them from this PC";
             return;
         }
 
@@ -397,7 +551,7 @@ public partial class MainWindow : Window
             : $"{_files.Count} items";
 
         FilesDetail.Text = missing > 0
-            ? $"{FormatSize(bytes)} · {missing} item(s) missing · tap someone to send"
+            ? $"{FormatSize(bytes)} · {missing} missing · tap someone to send"
             : $"{FormatSize(bytes)} · tap someone to send";
     }
 
@@ -415,6 +569,7 @@ public partial class MainWindow : Window
 
         PreviewStack.ItemsSource = PreviewItem.Stack(previews, SelectionPreviewBox);
         PreviewStack.Visibility = Visibility.Visible;
+        TrayPlaceholder.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>A preview is decoration: late or broken means none, never an error.</summary>
@@ -445,7 +600,39 @@ public partial class MainWindow : Window
         if (e.ButtonState == MouseButtonState.Pressed) DragMove();
     }
 
+    private void OnMinimize(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
     private void OnClose(object sender, RoutedEventArgs e) => Close();
 
-    private void SetStatus(string text) => StatusText.Text = text;
+    /// <summary>Shows a short message in a glass capsule that slides in and fades away.</summary>
+    private void SetStatus(string text)
+    {
+        ToastText.Text = text;
+
+        Toast.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(220)));
+        ToastSlide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-14, 0, TimeSpan.FromMilliseconds(480))
+        {
+            EasingFunction = new BackEase { Amplitude = 0.4, EasingMode = EasingMode.EaseOut },
+        });
+
+        _toastTimer?.Cancel();
+        var timer = new CancellationTokenSource();
+        _toastTimer = timer;
+
+        _ = HideToastAsync(timer.Token);
+    }
+
+    private async Task HideToastAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4), ct);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        Toast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(360)));
+    }
 }

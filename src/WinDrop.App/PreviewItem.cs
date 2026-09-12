@@ -15,6 +15,10 @@ public sealed class PreviewItem
         Angle = angle;
         OffsetX = offsetX;
 
+        // Corners scale with the card, so a thumbnail in the tray and the large one on the
+        // consent sheet read as the same object at two sizes.
+        Radius = Math.Round(box * 0.12);
+
         // A card keeps the picture's proportions inside the box. An icon is square artwork
         // with padding designed into it, so it gets the whole box.
         if (IsCard && Image.PixelWidth > 0 && Image.PixelHeight > 0)
@@ -35,6 +39,7 @@ public sealed class PreviewItem
     public bool IsIcon => !IsCard;
     public double Width { get; }
     public double Height { get; }
+    public double Radius { get; }
     public double Angle { get; }
     public double OffsetX { get; }
 

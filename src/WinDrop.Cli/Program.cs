@@ -44,7 +44,7 @@ static int PrintUsage()
     Console.WriteLine("""
         WinDrop - an AirDrop implementation for Windows
 
-          windrop receive [--dir <path>] [--yes]   advertise and accept transfers
+          windrop receive [--dir <path>] [--port <n>] [--yes]   advertise and accept transfers
           windrop send [--to <name>| --peer <host>] [--icon <image>] <file> [file...]
           windrop browse                   list nearby peers
 
@@ -81,8 +81,12 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
 
     await using IAirDropTransport transport = CreateTransport(args);
 
+    // --port lets a second receiver share the machine with the app, which already holds
+    // 8770. The SRV record carries the port, so browsers find it wherever it listens.
+    int port = int.TryParse(ArgumentValue(args, "--port"), out int requested) ? requested : AirDropServiceRecord.DefaultPort;
+
     string instance = $"{Environment.MachineName}-{Guid.NewGuid().ToString("N")[..6]}";
-    var record = new AirDropServiceRecord(instance, AirDropServiceRecord.DefaultPort, flags);
+    var record = new AirDropServiceRecord(instance, port, flags);
 
     await using IAsyncDisposable advertisement = await transport.AdvertiseAsync(record, ct);
 

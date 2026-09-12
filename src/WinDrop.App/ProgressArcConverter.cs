@@ -57,6 +57,22 @@ public sealed class ProgressArcConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>
+/// Half the bound height as a uniform corner radius, which is what makes a capsule.
+///
+/// WPF does not clamp a Border's radius to fit the way CSS does. A radius larger than half
+/// the height draws an ellipse — every "capsule" button in the first glass build came out
+/// as an oval — so the radius has to be derived from the rendered height.
+/// </summary>
+public sealed class CapsuleRadiusConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        new CornerRadius(value is double height ? height / 2 : 0);
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 /// <summary>Collapses an element when the bound boolean is false.</summary>
 public sealed class BoolToVisibilityConverter : IValueConverter
 {

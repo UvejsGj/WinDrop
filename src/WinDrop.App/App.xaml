@@ -1,71 +1,84 @@
 <Application x:Class="WinDrop.App.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:WinDrop.App"
              StartupUri="MainWindow.xaml">
   <Application.Resources>
 
-    <!--
-      Monochrome. Every surface is white at a low alpha over the DWM acrylic backdrop,
-      which is what makes it read as glass rather than as grey paint: the value shifts
-      with whatever is behind the window instead of staying put.
-
-      Nothing here is opaque except text. An opaque panel would punch a hole in the
-      backdrop and the illusion goes with it.
-    -->
-
-    <SolidColorBrush x:Key="Glass"        Color="#FFFFFF" Opacity="0.055"/>
-    <SolidColorBrush x:Key="GlassRaised"  Color="#FFFFFF" Opacity="0.10"/>
-    <SolidColorBrush x:Key="GlassHover"   Color="#FFFFFF" Opacity="0.16"/>
-    <SolidColorBrush x:Key="Hairline"     Color="#FFFFFF" Opacity="0.14"/>
-    <SolidColorBrush x:Key="HairlineSoft" Color="#FFFFFF" Opacity="0.07"/>
-
-    <SolidColorBrush x:Key="Label"          Color="#FFFFFF"/>
-    <SolidColorBrush x:Key="SecondaryLabel" Color="#FFFFFF" Opacity="0.55"/>
-    <SolidColorBrush x:Key="TertiaryLabel"  Color="#FFFFFF" Opacity="0.32"/>
-
-    <SolidColorBrush x:Key="Ink" Color="#0A0A0A"/>
+    <local:CapsuleRadiusConverter x:Key="Capsule"/>
 
     <!--
-      The specular edge. A real pane of glass catches light along its top edge and loses
-      it toward the bottom; a flat 1px border reads as a drawn rectangle instead. This
-      gradient is doing most of the work of making a flat panel look like a solid.
+      Monochrome. The glass carries the depth and the content carries the colour, so the
+      chrome itself never reaches for a hue. Type does the ranking: Display for titles,
+      Text for everything read at small sizes.
     -->
-    <LinearGradientBrush x:Key="GlassEdge" StartPoint="0,0" EndPoint="0.35,1">
-      <GradientStop Color="#59FFFFFF" Offset="0"/>
-      <GradientStop Color="#1AFFFFFF" Offset="0.35"/>
+
+    <FontFamily x:Key="DisplayFont">Segoe UI Variable Display, Segoe UI</FontFamily>
+    <FontFamily x:Key="TextFont">Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
+    <SolidColorBrush x:Key="Label"          Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="SecondaryLabel" Color="#9EFFFFFF"/>
+    <SolidColorBrush x:Key="TertiaryLabel"  Color="#61FFFFFF"/>
+    <SolidColorBrush x:Key="Ink"            Color="#FF0A0A0B"/>
+
+    <!-- The edge of a picture card: catches light at the top, loses it toward the bottom. -->
+    <LinearGradientBrush x:Key="CardEdge" StartPoint="0,0" EndPoint="0.3,1">
+      <GradientStop Color="#73FFFFFF" Offset="0"/>
+      <GradientStop Color="#1AFFFFFF" Offset="0.45"/>
       <GradientStop Color="#0DFFFFFF" Offset="1"/>
     </LinearGradientBrush>
 
-    <!-- Sheen laid over a surface, brightest at the top where light would enter. -->
-    <LinearGradientBrush x:Key="GlassSheen" StartPoint="0,0" EndPoint="0,1">
-      <GradientStop Color="#1FFFFFFF" Offset="0"/>
-      <GradientStop Color="#00FFFFFF" Offset="0.55"/>
-    </LinearGradientBrush>
-
-    <!-- Avatars are glass discs, not coloured ones. The initials carry the identity. -->
-    <RadialGradientBrush x:Key="AvatarGlass" GradientOrigin="0.3,0.2" Center="0.5,0.5" RadiusX="0.75" RadiusY="0.75">
-      <GradientStop Color="#33FFFFFF" Offset="0"/>
-      <GradientStop Color="#14FFFFFF" Offset="1"/>
-    </RadialGradientBrush>
-
-    <!-- Primary action: solid white on black. In monochrome, weight replaces hue. -->
-    <Style x:Key="PrimaryButton" TargetType="Button">
+    <!--
+      Capsules. A press shrinks the button slightly and a release springs it back past
+      its size before settling, which is most of what makes a control feel liquid rather
+      than clicked. The scale lives on the template's own border, not on the Button: a
+      transform set through a Style setter is shared and frozen, and cannot be animated.
+    -->
+    <Style x:Key="CapsuleButton" TargetType="Button">
       <Setter Property="Foreground" Value="{StaticResource Ink}"/>
-      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontFamily" Value="{StaticResource TextFont}"/>
+      <Setter Property="FontSize" Value="14"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Height" Value="40"/>
+      <Setter Property="Padding" Value="20,0"/>
       <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Focusable" Value="False"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Chrome" CornerRadius="9" Background="#FFFFFF" Padding="20,9">
+            <Border x:Name="Chrome" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource Capsule}}" Background="#F2F2F4"
+                    Padding="{TemplateBinding Padding}" RenderTransformOrigin="0.5,0.5">
+              <Border.RenderTransform>
+                <ScaleTransform/>
+              </Border.RenderTransform>
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Chrome" Property="Opacity" Value="0.86"/>
+                <Setter TargetName="Chrome" Property="Background" Value="#FFFFFFFF"/>
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
-                <Setter TargetName="Chrome" Property="Opacity" Value="0.7"/>
+                <Trigger.EnterActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="Chrome" Storyboard.TargetProperty="RenderTransform.ScaleX" To="0.94" Duration="0:0:0.12"/>
+                      <DoubleAnimation Storyboard.TargetName="Chrome" Storyboard.TargetProperty="RenderTransform.ScaleY" To="0.94" Duration="0:0:0.12"/>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="Chrome" Storyboard.TargetProperty="RenderTransform.ScaleX" To="1" Duration="0:0:0.45">
+                        <DoubleAnimation.EasingFunction><BackEase Amplitude="0.6" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                      </DoubleAnimation>
+                      <DoubleAnimation Storyboard.TargetName="Chrome" Storyboard.TargetProperty="RenderTransform.ScaleY" To="1" Duration="0:0:0.45">
+                        <DoubleAnimation.EasingFunction><BackEase Amplitude="0.6" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                      </DoubleAnimation>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.ExitActions>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -73,23 +86,43 @@
       </Setter>
     </Style>
 
-    <!-- Secondary action: the glass itself, outlined. -->
-    <Style x:Key="GlassButton" TargetType="Button">
+    <Style x:Key="TintedCapsuleButton" TargetType="Button" BasedOn="{StaticResource CapsuleButton}">
       <Setter Property="Foreground" Value="{StaticResource Label}"/>
-      <Setter Property="FontSize" Value="13"/>
-      <Setter Property="FontWeight" Value="Medium"/>
-      <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Chrome" CornerRadius="9" Padding="20,9"
-                    Background="{StaticResource GlassRaised}"
-                    BorderBrush="{StaticResource Hairline}" BorderThickness="1">
+            <Border x:Name="Chrome" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource Capsule}}" Background="#24FFFFFF"
+                    Padding="{TemplateBinding Padding}" RenderTransformOrigin="0.5,0.5">
+              <Border.RenderTransform>
+                <ScaleTransform/>
+              </Border.RenderTransform>
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource GlassHover}"/>
+                <Setter TargetName="Chrome" Property="Background" Value="#38FFFFFF"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Trigger.EnterActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="Chrome" Storyboard.TargetProperty="RenderTransform.ScaleX" To="0.94" Duration="0:0:0.12"/>
+                      <DoubleAnimation Storyboard.TargetName="Chrome" Storyboard.TargetProperty="RenderTransform.ScaleY" To="0.94" Duration="0:0:0.12"/>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="Chrome" Storyboard.TargetProperty="RenderTransform.ScaleX" To="1" Duration="0:0:0.45">
+                        <DoubleAnimation.EasingFunction><BackEase Amplitude="0.6" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                      </DoubleAnimation>
+                      <DoubleAnimation Storyboard.TargetName="Chrome" Storyboard.TargetProperty="RenderTransform.ScaleY" To="1" Duration="0:0:0.45">
+                        <DoubleAnimation.EasingFunction><BackEase Amplitude="0.6" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                      </DoubleAnimation>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.ExitActions>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -97,21 +130,27 @@
       </Setter>
     </Style>
 
-    <!-- Window chrome buttons: no fill until hovered, so they stay out of the way. -->
-    <Style x:Key="ChromeButton" TargetType="Button">
-      <Setter Property="Foreground" Value="{StaticResource SecondaryLabel}"/>
-      <Setter Property="FontSize" Value="12"/>
+    <!-- Toolbar glyphs, grouped inside a glass capsule. No fill until hovered. -->
+    <Style x:Key="IconButton" TargetType="Button">
+      <Setter Property="Foreground" Value="{StaticResource Label}"/>
+      <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Width" Value="38"/>
+      <Setter Property="Height" Value="38"/>
       <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Focusable" Value="False"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Chrome" CornerRadius="7" Background="Transparent" Width="30" Height="30">
+            <Border x:Name="Chrome" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource Capsule}}" Background="Transparent">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource GlassHover}"/>
-                <Setter Property="Foreground" Value="{StaticResource Label}"/>
+                <Setter TargetName="Chrome" Property="Background" Value="#26FFFFFF"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#3DFFFFFF"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>

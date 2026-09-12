@@ -17,6 +17,8 @@ public sealed class PeerViewModel : INotifyPropertyChanged
     private PeerState _state = PeerState.Idle;
     private double _progress;
     private string _status = "";
+    private double _x;
+    private double _y;
 
     public PeerViewModel(AirDropPeer peer)
     {
@@ -30,6 +32,19 @@ public sealed class PeerViewModel : INotifyPropertyChanged
     public string Initials { get; }
 
     public string Detail => $"{Peer.EndPoint.Address}";
+
+    /// <summary>Where the tile sits on the radar, in window coordinates. Set by the window.</summary>
+    public double X
+    {
+        get => _x;
+        set { if (_x == value) return; _x = value; Notify(); }
+    }
+
+    public double Y
+    {
+        get => _y;
+        set { if (_y == value) return; _y = value; Notify(); }
+    }
 
     public PeerState State
     {

@@ -23,4 +23,8 @@
   <ItemGroup>
     <ProjectReference Include="..\WinDrop.Protocol\WinDrop.Protocol.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Compiled at startup by Glass/ShaderCompiler.cs; the source is the only artefact. -->
+    <EmbeddedResource Include="Glass\LiquidGlass.hlsl" LogicalName="WinDrop.App.Glass.LiquidGlass.hlsl" />
+  </ItemGroup>
 </Project>
