@@ -33,9 +33,12 @@ public sealed record AirDropOutgoingFile(string LocalPath, string FileName, stri
 
     public string BomPath => $"./{FileName}";
 
+    // The type is taken from FileName rather than from LocalPath: the two carry the same
+    // extension, but FileName is the one the receiver is shown, and the entry should not
+    // be able to describe a file by one name and type it by another.
     public AirDropFileEntry ToEntry() => new(
         FileName,
-        FileType ?? (IsDirectory ? "public.folder" : AirDropFileEntry.DefaultFileType),
+        FileType ?? (IsDirectory ? UniformTypeIdentifiers.Folder : UniformTypeIdentifiers.ForFileName(FileName)),
         BomPath,
         IsDirectory);
 

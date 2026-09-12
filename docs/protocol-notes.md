@@ -464,3 +464,92 @@ so one AWDL session can separate these cases: no icon, a JPEG, and opendrop's JP
    preview, or the transfer?
 3. What size does Apple send, and does it also send the 64 px variant opendrop left
    commented out?
+
+## /Ask file type (`FileType`)
+
+Every file in an /Ask body carries a Uniform Type Identifier saying what it is. Ours all
+said `public.data` — "an opaque byte stream" — which is true of every file and
+informative about none.
+
+#### 2026-09-12 — READ: what the field is for
+
+A UTI names a type in a hierarchy: `public.jpeg` conforms to `public.image`, which
+conforms to `public.data`. So the field tells a receiver the format and every more
+general kind it belongs to at once. The plausible consequence on iOS is **routing** — an
+accepted `public.jpeg` going to Photos, a `public.data` going to Files — which would make
+this field the difference between a photo landing where the user expects it and landing
+in a downloads list.
+
+**Unverified, and not verifiable here.** No Apple device has ever accepted a transfer
+from us, so the routing claim is reasoning about what a type system is for, not an
+observation. It stays unverified until an AWDL session (milestone 6).
+
+#### 2026-09-12 — MEASURED: what opendrop's classifier actually emits
+
+opendrop does not type a file by its name. `client.send_ask` reads the first 128 bytes of the
+**first** selected file, identifies the format with `fleep`, and maps that to a UTI in
+`AirDropUtil.get_uti_type` — then puts that single answer on **every** entry in the
+request, so a JPEG selected alongside a PDF types them both alike.
+
+Reading that function suggests a table of specific types: `public.jpeg`,
+`public.jpeg-2000`, `com.compuserve.gif`, `public.png`, `public.camera-raw-image`,
+`org.gnu.gnu-zip-archive`. Running it says otherwise. `tools/uti_oracle.py` puts every
+signature in fleep's table through the real classifier (fixture `opendrop-uti.json`):
+
+| Sent | opendrop says | Why |
+|---|---|---|
+| JPEG | `public.image` | the branch tests `"jpg" in mime`; fleep's MIME type is `image/jpeg`, and `jpg` is its *extension* field |
+| CR2, NEF, ARW, DNG | `public.image` | raw files are TIFF containers, so fleep answers with TIFF's `image/tiff` and `raster-image` ahead of its own raw entry, and the `raw` test matches neither. Reaching that test by MIME type would not help either: fleep's MIME type for raw is `application/octet-stream`, which never enters the image branch the test lives in |
+| `.gz` | `public.zip-archive` | `zip` is a substring of `application/gzip`, and the zip test is an `if`, not an `elif`, so it overwrites the gzip verdict set one line above |
+| `.zip` | `public.content` *or* `public.zip-archive` | a real zip starts `PK\x03\x04`, shared with fleep's Office-document entries, which sort ahead of the archive one; an empty zip (`PK\x05\x06`) does classify as an archive |
+| `.pdf` | `public.content` | fleep calls it `application/postscript` |
+| HEIC | `public.content` | fleep has no HEIC signature at all — nor SVG, nor plain text |
+
+`public.jpeg` and `public.camera-raw-image` are never produced by it. Since opendrop does
+interoperate with real Apple devices, that is also evidence that an abstract type here is
+at worst tolerated: `public.image` does not get a transfer rejected.
+
+Read, not measured, from the same function: `FileIsDirectory` is computed as
+`os.path.isdir(os.path.basename(file))`, against the bare name rather than the path, so a
+folder send announces itself as a non-directory unless opendrop happens to be running in
+the folder's parent. Worth knowing on our **receiving** side, which is told what to
+expect by that flag.
+
+#### What WinDrop does about it
+
+`UniformTypeIdentifiers` maps the extension to a UTI, `public.folder` for directories, and
+`public.data` when the extension is not one we are prepared to name.
+
+By extension rather than by content, in increasing order of weight:
+
+1. It needs no read. /Ask is assembled before the user has consented to anything.
+2. The extension is already inside the `FileName` we send, and on Windows it is not a
+   hint but the system's own notion of type — the icon, the default application and the
+   thumbnail we put in the /Ask preview all come from it. A sniffed type that disagreed
+   with it would put two halves of one entry at odds.
+3. **Content cannot make the distinctions that matter**, and this part is not about
+   opendrop's bugs. CR2, NEF, ARW and DNG open with `II*\0`, exactly as a plain TIFF
+   does. HEIC, MP4, MOV and M4A all open with an `ftyp` box. The formats a header cannot
+   separate are the ones whose routing would differ most.
+
+The cost is a file whose extension lies, which we type by its name rather than its bytes.
+That is the right failure: the receiver stores it under that same name, so the name and
+the type are at least wrong together, and the sending machine already treats it that way.
+
+Camera raw maps to the abstract `public.camera-raw-image` rather than to per-vendor types
+(`com.canon.cr2-raw-image` and its kin). Those exist, but none has been seen on the wire,
+and every raw format conforms to the abstract one.
+
+### Open questions
+
+1. Does `FileType` decide where iOS puts an accepted file — Photos for `public.image` and
+   its subtypes, Files for everything else? The value of the whole mapping rests on this,
+   and it is unverified until an AWDL session.
+2. Does a type an iPhone disagrees with cost anything beyond placement — a JPEG typed
+   `public.plain-text`, say? One session separates "wrong folder" from "rejected".
+3. Is a specific type worth more than an abstract one? opendrop reaches real devices
+   sending only abstract types, so the difference may be placement alone, or nothing.
+4. Does Apple's sender type each file separately, as we do, or put one type on the whole
+   request, as opendrop does? A capture of a mixed selection from a Mac would settle it.
+5. What does a Mac send for a folder — `public.folder`, or something narrower for bundles
+   like `.app` and `.rtfd` that are directories pretending to be files?

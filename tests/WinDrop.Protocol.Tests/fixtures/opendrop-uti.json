@@ -1,0 +1,954 @@
+[
+  {
+    "extension": "3g2",
+    "signature": "66 74 79 70 33 67 70",
+    "mime": "video/3gpp2",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "3gp",
+    "signature": "66 74 79 70 33 67 70",
+    "mime": "video/3gpp2",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "7z",
+    "signature": "37 7A BC AF 27 1C",
+    "mime": "application/x-7z-compressed",
+    "type": "archive",
+    "uti": "public.data"
+  },
+  {
+    "extension": "aac",
+    "signature": "FF F1",
+    "mime": "audio/aac",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "aac",
+    "signature": "FF F9",
+    "mime": "audio/aac",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "ac3",
+    "signature": "0B 77",
+    "mime": "application/octet-stream",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "ai",
+    "signature": "25 50 44 46",
+    "mime": "application/postscript",
+    "type": "vector-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "aiff",
+    "signature": "46 4F 52 4D 00",
+    "mime": "audio/aiff",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "amr",
+    "signature": "23 21 41 4D",
+    "mime": "application/octet-stream",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "arw",
+    "signature": "49 49 2A 00",
+    "mime": "image/tiff",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "asf",
+    "signature": "30 26 B2 75 8E 66 CF 11",
+    "mime": "audio/x-ms-wma",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "au",
+    "signature": "2E 73 6E 64",
+    "mime": "audio/basic",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "avi",
+    "signature": "41 56 49 20 4C 49 53 54",
+    "mime": "video/avi",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "bmp",
+    "signature": "42 4D",
+    "mime": "image/bmp",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "c4d",
+    "signature": "58 43 34 44 43 34 44 36",
+    "mime": "application/octet-stream",
+    "type": "3d-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "cab",
+    "signature": "4D 53 43 46",
+    "mime": "application/vnd.ms-cab-compressed",
+    "type": "system",
+    "uti": "public.content"
+  },
+  {
+    "extension": "cat",
+    "signature": "30 82",
+    "mime": "application/vnd.microsoft.portable-executable",
+    "type": "system",
+    "uti": "public.content"
+  },
+  {
+    "extension": "com",
+    "signature": "4D 5A",
+    "mime": "application/x-msdownload",
+    "type": "executable",
+    "uti": "public.content"
+  },
+  {
+    "extension": "cr2",
+    "signature": "49 49 2A 00",
+    "mime": "image/tiff",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "crw",
+    "signature": "49 49 1A 00",
+    "mime": "application/octet-stream",
+    "type": "raw-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "dll",
+    "signature": "4D 5A 90 00",
+    "mime": "application/vnd.microsoft.portable-executable",
+    "type": "executable",
+    "uti": "public.content"
+  },
+  {
+    "extension": "dmg",
+    "signature": "78 01 73 0D 62 62 60",
+    "mime": "application/x-apple-diskimage",
+    "type": "archive",
+    "uti": "public.image"
+  },
+  {
+    "extension": "dng",
+    "signature": "49 49 2A 00",
+    "mime": "image/tiff",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "dng",
+    "signature": "4D 4D 00 2A",
+    "mime": "image/tiff",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "doc",
+    "signature": "50 4B 03 04 14 00 06 00",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "doc",
+    "signature": "D0 CF 11 E0 A1 B1 1A E1",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "docx",
+    "signature": "50 4B 03 04 14 00 06 00",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "docx",
+    "signature": "D0 CF 11 E0 A1 B1 1A E1",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "drv",
+    "signature": "4D 5A 90 00",
+    "mime": "application/vnd.microsoft.portable-executable",
+    "type": "executable",
+    "uti": "public.content"
+  },
+  {
+    "extension": "eps",
+    "signature": "25 21 50 53 2D 41 64 6F",
+    "mime": "application/postscript",
+    "type": "vector-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "eps",
+    "signature": "C5 D0 D3 C6",
+    "mime": "application/postscript",
+    "type": "vector-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "epub",
+    "signature": "50 4B 03 04",
+    "mime": "application/zip",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "erf",
+    "signature": "4D 4D 00 2A",
+    "mime": "image/tiff",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "exe",
+    "signature": "4D 5A 90 00",
+    "mime": "application/vnd.microsoft.portable-executable",
+    "type": "executable",
+    "uti": "public.content"
+  },
+  {
+    "extension": "fbx",
+    "signature": "46 42 58",
+    "mime": "application/octet-stream",
+    "type": "3d-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "flac",
+    "signature": "66 4C 61 43 00 00 00 22",
+    "mime": "audio/flac",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "flv",
+    "signature": "46 4C 56",
+    "mime": "video/x-flv",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "gif",
+    "signature": "47 49 46 38",
+    "mime": "image/gif",
+    "type": "raster-image",
+    "uti": "com.compuserve.gif"
+  },
+  {
+    "extension": "gz",
+    "signature": "1F 8B 08",
+    "mime": "application/gzip",
+    "type": "archive",
+    "uti": "public.zip-archive"
+  },
+  {
+    "extension": "ico",
+    "signature": "00 00 01 00",
+    "mime": "image/x-icon",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "iso",
+    "signature": "43 44 30 30 31",
+    "mime": "application/octet-stream",
+    "type": "archive",
+    "uti": "public.data"
+  },
+  {
+    "extension": "iso",
+    "signature": "43 49 53 4F",
+    "mime": "application/octet-stream",
+    "type": "archive",
+    "uti": "public.data"
+  },
+  {
+    "extension": "jar",
+    "signature": "50 4B 03 04",
+    "mime": "application/zip",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "jp2",
+    "signature": "00 00 00 0C 6A 50 20 20",
+    "mime": "image/jp2",
+    "type": "raster-image",
+    "uti": "public.jpeg-2000"
+  },
+  {
+    "extension": "jpg",
+    "signature": "FF D8 FF",
+    "mime": "image/jpeg",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "key",
+    "signature": "50 4B 03 04",
+    "mime": "application/zip",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "m4a",
+    "signature": "66 74 79 70 4D 34 41 20",
+    "mime": "audio/mp4",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "m4v",
+    "signature": "66 74 79 70 4D 34 56 20",
+    "mime": "video/mp4",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "m4v",
+    "signature": "66 74 79 70 6D 70 34 32",
+    "mime": "video/mp4",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "ma",
+    "signature": "4D 61 79 61",
+    "mime": "text/plain",
+    "type": "3d-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "midi",
+    "signature": "4D 54 68 64",
+    "mime": "audio/midi",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "mka",
+    "signature": "6D 61 74 72 6F 73 6B 61",
+    "mime": "audio/x-matroska",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "mkv",
+    "signature": "6D 61 74 72 6F 73 6B 61",
+    "mime": "audio/x-matroska",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "mov",
+    "signature": "66 72 65 65",
+    "mime": "video/quicktime",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "mov",
+    "signature": "66 74 79 70 71 74 20 20",
+    "mime": "video/quicktime",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "mov",
+    "signature": "6D 64 61 74",
+    "mime": "video/quicktime",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "mov",
+    "signature": "6D 6F 6F 76",
+    "mime": "video/quicktime",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "mov",
+    "signature": "70 6E 6F 74",
+    "mime": "video/quicktime",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "mov",
+    "signature": "73 6B 69 70",
+    "mime": "video/quicktime",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "mov",
+    "signature": "77 69 64 65",
+    "mime": "video/quicktime",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "mp3",
+    "signature": "49 44 33",
+    "mime": "audio/mpeg",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "mp4",
+    "signature": "66 74 79 70 4D 53 4E 56",
+    "mime": "video/mp4",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "mp4",
+    "signature": "66 74 79 70 69 73 6F 6D",
+    "mime": "video/mp4",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "mpg",
+    "signature": "00 00 01 BA",
+    "mime": "video/mpeg",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "ms3d",
+    "signature": "4D 53 33 44",
+    "mime": "application/octet-stream",
+    "type": "3d-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "mtl",
+    "signature": "42 6C 65 6E 64 65 72 20 4D 54 4C 20 46 69 6C 65",
+    "mime": "text/plain",
+    "type": "3d-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "mtl",
+    "signature": "4D 61 78 32 4D 74 6C",
+    "mime": "text/plain",
+    "type": "3d-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "nef",
+    "signature": "4D 4D 00 2A",
+    "mime": "image/tiff",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "nrw",
+    "signature": "49 49 2A 00",
+    "mime": "image/tiff",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "numbers",
+    "signature": "50 4B 03 04",
+    "mime": "application/zip",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "obj",
+    "signature": "42 6C 65 6E 64 65 72",
+    "mime": "text/plain",
+    "type": "3d-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "obj",
+    "signature": "4D 61 78 32 4F 62 6A",
+    "mime": "text/plain",
+    "type": "3d-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "odp",
+    "signature": "70 72 65 73 65 6E 74 61 74 69 6F 6E",
+    "mime": "application/vnd.oasis.opendocument.presentation",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "ods",
+    "signature": "73 70 72 65 61 64 73 68 65 65 74",
+    "mime": "application/vnd.oasis.opendocument.spreadsheet",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "odt",
+    "signature": "74 65 78 74",
+    "mime": "application/vnd.oasis.opendocument.text",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "oga",
+    "signature": "4F 67 67 53 00 02 00 00",
+    "mime": "audio/ogg",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "ogv",
+    "signature": "4F 67 67 53 00 02 00 00",
+    "mime": "audio/ogg",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "orf",
+    "signature": "49 49 52 4F",
+    "mime": "application/octet-stream",
+    "type": "raw-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "orf",
+    "signature": "49 49 52 53",
+    "mime": "application/octet-stream",
+    "type": "raw-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "otf",
+    "signature": "4F 54 54 4F",
+    "mime": "font/otf",
+    "type": "font",
+    "uti": "public.content"
+  },
+  {
+    "extension": "pages",
+    "signature": "50 4B 03 04",
+    "mime": "application/zip",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "pdf",
+    "signature": "25 50 44 46",
+    "mime": "application/postscript",
+    "type": "vector-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "pef",
+    "signature": "4D 4D 00 2A",
+    "mime": "image/tiff",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "ply",
+    "signature": "70 6C 79",
+    "mime": "text/plain",
+    "type": "3d-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "png",
+    "signature": "89 50 4E 47 0D 0A 1A 0A",
+    "mime": "image/png",
+    "type": "raster-image",
+    "uti": "public.png"
+  },
+  {
+    "extension": "pps",
+    "signature": "50 4B 03 04 14 00 06 00",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "pps",
+    "signature": "D0 CF 11 E0 A1 B1 1A E1",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "ppt",
+    "signature": "50 4B 03 04 14 00 06 00",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "ppt",
+    "signature": "D0 CF 11 E0 A1 B1 1A E1",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "pptx",
+    "signature": "50 4B 03 04 14 00 06 00",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "pptx",
+    "signature": "D0 CF 11 E0 A1 B1 1A E1",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "psd",
+    "signature": "38 42 50 53",
+    "mime": "image/vnd.adobe.photoshop",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "ra",
+    "signature": "2E 52 4D 46",
+    "mime": "application/octet-stream",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "raf",
+    "signature": "46 55 4A 49",
+    "mime": "application/octet-stream",
+    "type": "raw-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "rar",
+    "signature": "52 61 72 21 1A 07 00",
+    "mime": "application/vnd.rar",
+    "type": "archive",
+    "uti": "public.data"
+  },
+  {
+    "extension": "rar",
+    "signature": "52 61 72 21 1A 07 01 00",
+    "mime": "application/vnd.rar",
+    "type": "archive",
+    "uti": "public.data"
+  },
+  {
+    "extension": "raw",
+    "signature": "49 49 55 00",
+    "mime": "application/octet-stream",
+    "type": "raw-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "reg",
+    "signature": "52 45 47 45 44 49 54",
+    "mime": "application/vnd.microsoft.portable-executable",
+    "type": "system",
+    "uti": "public.content"
+  },
+  {
+    "extension": "reg",
+    "signature": "57 69 6E 64 6F 77 73 20 52 65 67 69 73 74 72 79",
+    "mime": "application/vnd.microsoft.portable-executable",
+    "type": "system",
+    "uti": "public.content"
+  },
+  {
+    "extension": "rtf",
+    "signature": "7B 5C 72 74 66 31",
+    "mime": "application/rtf",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "rw2",
+    "signature": "49 49 55 00",
+    "mime": "application/octet-stream",
+    "type": "raw-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "sdb",
+    "signature": "73 64 62 66",
+    "mime": "application/vnd.microsoft.portable-executable",
+    "type": "system",
+    "uti": "public.content"
+  },
+  {
+    "extension": "sqlite",
+    "signature": "53 51 4C 69 74 65 20 66 6F 72 6D 61 74 20 33 00",
+    "mime": "application/x-sqlite3",
+    "type": "database",
+    "uti": "public.content"
+  },
+  {
+    "extension": "srw",
+    "signature": "4D 4D 00 2A",
+    "mime": "image/tiff",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "swf",
+    "signature": "43 57 53",
+    "mime": "application/vnd.adobe.flash-movie",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "swf",
+    "signature": "46 57 53",
+    "mime": "application/vnd.adobe.flash-movie",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "sys",
+    "signature": "4D 5A 80 00",
+    "mime": "application/vnd.microsoft.portable-executable",
+    "type": "system",
+    "uti": "public.content"
+  },
+  {
+    "extension": "sys",
+    "signature": "4D 5A 90 00",
+    "mime": "application/vnd.microsoft.portable-executable",
+    "type": "executable",
+    "uti": "public.content"
+  },
+  {
+    "extension": "tar.z",
+    "signature": "1F 9D",
+    "mime": "application/x-compress",
+    "type": "archive",
+    "uti": "public.data"
+  },
+  {
+    "extension": "tar.z",
+    "signature": "1F A0",
+    "mime": "application/x-compress",
+    "type": "archive",
+    "uti": "public.data"
+  },
+  {
+    "extension": "tiff",
+    "signature": "49 20 49",
+    "mime": "image/tiff",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "tiff",
+    "signature": "49 49 2A 00",
+    "mime": "image/tiff",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "tiff",
+    "signature": "4D 4D 00 2A",
+    "mime": "image/tiff",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "tiff",
+    "signature": "4D 4D 00 2B",
+    "mime": "image/tiff",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "ttf",
+    "signature": "00 01 00 00",
+    "mime": "font/ttf",
+    "type": "font",
+    "uti": "public.content"
+  },
+  {
+    "extension": "vob",
+    "signature": "00 00 01 BA",
+    "mime": "video/mpeg",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "voc",
+    "signature": "43 72 65 61 74 69 76 65",
+    "mime": "application/octet-stream",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "wav",
+    "signature": "52 49 46 46",
+    "mime": "audio/wav",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "webm",
+    "signature": "1A 45 DF A3",
+    "mime": "video/webm",
+    "type": "video",
+    "uti": "public.video"
+  },
+  {
+    "extension": "webp",
+    "signature": "57 45 42 50",
+    "mime": "image/webp",
+    "type": "raster-image",
+    "uti": "public.image"
+  },
+  {
+    "extension": "wma",
+    "signature": "30 26 B2 75 8E 66 CF 11",
+    "mime": "audio/x-ms-wma",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "wmv",
+    "signature": "30 26 B2 75 8E 66 CF 11",
+    "mime": "audio/x-ms-wma",
+    "type": "audio",
+    "uti": "public.audio"
+  },
+  {
+    "extension": "woff",
+    "signature": "77 4F 46 46",
+    "mime": "font/woff",
+    "type": "font",
+    "uti": "public.content"
+  },
+  {
+    "extension": "woff2",
+    "signature": "77 4F 46 32",
+    "mime": "font/woff2",
+    "type": "font",
+    "uti": "public.content"
+  },
+  {
+    "extension": "wrl",
+    "signature": "56 52 4D 4C",
+    "mime": "text/plain",
+    "type": "3d-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "x3d",
+    "signature": "58 33 44",
+    "mime": "application/xml",
+    "type": "3d-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "x3f",
+    "signature": "46 4F 56 62",
+    "mime": "application/octet-stream",
+    "type": "raw-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "xls",
+    "signature": "50 4B 03 04 14 00 06 00",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "xls",
+    "signature": "D0 CF 11 E0 A1 B1 1A E1",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "xlsx",
+    "signature": "50 4B 03 04 14 00 06 00",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "xlsx",
+    "signature": "D0 CF 11 E0 A1 B1 1A E1",
+    "mime": "application/vnd.ms-excel",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "xml",
+    "signature": "78 6D 6C",
+    "mime": "application/xml",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "xsi",
+    "signature": "78 73 69",
+    "mime": "text/plain",
+    "type": "3d-image",
+    "uti": "public.content"
+  },
+  {
+    "extension": "zip",
+    "signature": "50 4B 03 04",
+    "mime": "application/zip",
+    "type": "document",
+    "uti": "public.content"
+  },
+  {
+    "extension": "zip",
+    "signature": "50 4B 05 06",
+    "mime": "application/zip",
+    "type": "archive",
+    "uti": "public.zip-archive"
+  },
+  {
+    "extension": "zip",
+    "signature": "50 4B 07 08",
+    "mime": "application/zip",
+    "type": "archive",
+    "uti": "public.zip-archive"
+  }
+]
