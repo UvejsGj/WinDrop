@@ -159,6 +159,39 @@ public class AirDropFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task The_preview_reaches_the_consent_prompt_intact()
+    {
+        // The receiver has to show the preview before the user answers, so it must be
+        // fully available inside the consent callback — not something fetched later.
+        byte[] icon = new byte[70_000];
+        Random.Shared.NextBytes(icon);
+
+        byte[]? seen = null;
+
+        Harness h = await StartAsync((request, _) =>
+        {
+            seen = request.FileIcon;
+            return Task.FromResult(false);
+        });
+
+        try
+        {
+            var file = AirDropOutgoingFile.FromPath(WriteTempFile("photo.jpg", "pixels"));
+
+            await h.Session.AskAsync(new AirDropAskRequest(
+                "Sender PC", "Windows", "id", AirDropAskRequest.FinderBundleId, [file.ToEntry()],
+                FileIcon: icon));
+        }
+        finally
+        {
+            await h.Shutdown();
+        }
+
+        await h.ServerTask.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal(icon, seen);
+    }
+
+    [Fact]
     public async Task Upload_without_a_preceding_ask_is_refused_by_the_receiver()
     {
         // The property that makes consent meaningful. Driven with a raw connection so

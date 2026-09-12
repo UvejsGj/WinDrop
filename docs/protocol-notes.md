@@ -196,6 +196,10 @@ so our chunked-zlib framing has still never been read by anything but us.
   constructor whose argument order has since changed, so the entry pointer lands in
   `header_codec` and raises `TypeError: encode() argument 'encoding' must be str, not
   int`. `pip install libarchive-c==2.9` fixes it.
+- `opendrop send` fails for **every image** on current Pillow. Generating the /Ask
+  preview calls `Image.ANTIALIAS`, which Pillow 10 removed, so the send dies with
+  `AttributeError` before a byte reaches the network. Non-image files are unaffected,
+  which is why earlier interop runs never hit it. `pip install "Pillow<10"` fixes it.
 
 
 #### 2026-09-02 — CONFIRMED: full interop with opendrop
@@ -387,3 +391,76 @@ has to leave the machine in order to check a match.
    protocol constant.
 8. Why is the version byte `0x03`? Is it an AirDrop protocol revision, and does an older
    Apple device on the same network emit a lower value?
+
+## /Ask preview image (`FileIcon`)
+
+The receiver's prompt shows a picture of what is being sent. That picture travels inside
+the /Ask body. It is the only field there that is not text, and a receiver has to
+decode it **before** the user has agreed to anything.
+
+#### 2026-09-12 — READ: how opendrop builds it
+
+From the installed opendrop's `client.py` and `util.py`:
+
+- `FileIcon` is a **top-level** key holding a `data` object. There is one preview for
+  the whole request, not one per file.
+- It is attached only when the first file's leading 128 bytes sniff as an image (via
+  `fleep`). Otherwise the key is absent. It is never present and empty.
+- `generate_file_icon` applies the EXIF rotation, fits the image in a **540 × 540** box
+  and saves it as **JPEG 2000**. A 64 px variant exists but is commented out.
+- `server.py` never reads the key. opendrop's receiver ignores previews completely.
+
+The JPEG 2000 choice is unusual enough that it is probably copied from observed Apple
+traffic. That is an inference, not an observation.
+
+#### 2026-09-12 — MEASURED: the bytes, and what Windows can do with them
+
+Generated through opendrop's own code path (`tools/fileicon_oracle.py`, the fixture
+`opendrop-ask-with-icon.bplist`):
+
+```
+thumbnail (540, 360), icon 19276 bytes, ask body 19634 bytes
+icon head 00 00 00 0c 6a 50 20 20 0d 0a 87 0a
+```
+
+That is the JP2 signature box. Its body `0D 0A 87 0A` is designed so that CRLF
+translation or 7-bit stripping in transit breaks it visibly.
+
+Windows cannot decode it. `BitmapDecoder.Create` tries every installed WIC codec by
+content, the widest net available, and it fails:
+
+```
+control.jpg       -> decoded by 'JPEG Decoder' 540x360
+opendrop-icon.jp2 -> FAILED: NotSupportedException No imaging component suitable to complete this operation was found.
+```
+
+The JPEG is the same thumbnail, re-encoded. It is the positive control: it shows the
+decoder path works, so the JP2 failure is about the format and not the harness.
+
+#### What WinDrop does about it
+
+**Receiving.** The format is identified from its signature (`PreviewImage.Sniff`).
+Only JPEG and PNG are decoded, each by its own named decoder. Nothing goes through the
+content-sniffing path, because that path reaches every third-party codec on the
+machine, and each of those is parsing code a stranger could reach without a click.
+Image dimensions come from the header and are capped at 2048 before any pixels are
+decompressed. A megabyte of PNG can claim 65535 × 65535. A PNG header claiming
+60000 × 60000 is refused in 3 ms. For JPEG 2000, or no icon at all, the prompt shows
+the Windows icon for the first file's type instead.
+
+**Sending.** JPEG, from the shell's thumbnail, fitted in opendrop's 540 box. JPEG
+because Windows has no JPEG 2000 encoder either. The icon is sent only when the
+thumbnail is opaque, because JPEG would fill a transparent PNG's transparent areas
+with whatever colour data sat under them.
+
+**Unverified against Apple:** whether an iPhone renders a JPEG here, ignores it, or
+rejects the whole /Ask. The CLI's `send --icon <file>` attaches any bytes unexamined,
+so one AWDL session can separate these cases: no icon, a JPEG, and opendrop's JP2.
+
+### Open questions
+
+1. Does Apple send JPEG 2000 as well? opendrop suggests so. Unobserved.
+2. Does iOS accept a JPEG `FileIcon`? A PNG? Does a format it dislikes cost only the
+   preview, or the transfer?
+3. What size does Apple send, and does it also send the 64 px variant opendrop left
+   commented out?

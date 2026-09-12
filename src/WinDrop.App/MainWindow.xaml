@@ -21,6 +21,45 @@
     <local:ProgressArcConverter x:Key="Arc"/>
     <local:BoolToVisibilityConverter x:Key="BoolVis"/>
 
+    <!--
+      A file preview. Pictures of contents are cards; artwork with its own shape (type
+      icons, folders) sits on the glass unframed. The content is the only colour in the
+      window, which is the point: the chrome stays monochrome so the file is what you see.
+    -->
+    <DataTemplate x:Key="PreviewTemplate">
+      <Grid Width="{Binding Width}" Height="{Binding Height}"
+            HorizontalAlignment="Center" VerticalAlignment="Center"
+            RenderTransformOrigin="0.5,0.5">
+        <Grid.RenderTransform>
+          <TransformGroup>
+            <RotateTransform Angle="{Binding Angle}"/>
+            <TranslateTransform X="{Binding OffsetX}"/>
+          </TransformGroup>
+        </Grid.RenderTransform>
+
+        <!-- The shadow is what separates one card from the card beneath it. -->
+        <Rectangle Visibility="{Binding IsCard, Converter={StaticResource BoolVis}}"
+                   RadiusX="9" RadiusY="9"
+                   Stroke="{StaticResource GlassEdge}" StrokeThickness="1"
+                   RenderOptions.BitmapScalingMode="HighQuality">
+          <Rectangle.Fill>
+            <ImageBrush ImageSource="{Binding Image}" Stretch="UniformToFill"/>
+          </Rectangle.Fill>
+          <Rectangle.Effect>
+            <DropShadowEffect BlurRadius="18" ShadowDepth="4" Direction="270" Opacity="0.55" Color="Black"/>
+          </Rectangle.Effect>
+        </Rectangle>
+
+        <Image Source="{Binding Image}"
+               Visibility="{Binding IsIcon, Converter={StaticResource BoolVis}}"
+               RenderOptions.BitmapScalingMode="HighQuality"/>
+      </Grid>
+    </DataTemplate>
+
+    <ItemsPanelTemplate x:Key="OverlayPanel">
+      <Grid/>
+    </ItemsPanelTemplate>
+
     <DataTemplate x:Key="PeerTile">
       <Grid Width="124" Margin="4,12" Cursor="Hand" Background="Transparent"
             RenderTransformOrigin="0.5,0.5" MouseLeftButtonUp="OnPeerClicked">
@@ -110,13 +149,18 @@
               BorderBrush="{StaticResource GlassEdge}" BorderThickness="1"/>
       <Border CornerRadius="16" Background="{StaticResource GlassSheen}"/>
       <StackPanel Margin="20,22">
+        <!-- Height is fixed so a rotated card's corners have room and the text below does not jump. -->
+        <ItemsControl x:Name="PreviewStack" Height="104" Margin="0,0,0,14"
+                      ItemTemplate="{StaticResource PreviewTemplate}"
+                      ItemsPanel="{StaticResource OverlayPanel}"
+                      Visibility="Collapsed" IsHitTestVisible="False" Focusable="False"/>
         <TextBlock x:Name="FilesHeadline" Text="Drop files here"
                    Foreground="{StaticResource Label}" FontSize="15" FontWeight="Light"
                    TextAlignment="Center" TextTrimming="CharacterEllipsis"/>
         <TextBlock x:Name="FilesDetail" Text="folders welcome"
                    Foreground="{StaticResource TertiaryLabel}" FontSize="12"
                    TextAlignment="Center" Margin="0,5,0,0"/>
-        <Button Content="Choose" Style="{StaticResource PrimaryButton}"
+        <Button x:Name="ChooseButton" Content="Choose" Style="{StaticResource PrimaryButton}"
                 HorizontalAlignment="Center" Margin="0,16,0,0" Click="OnChooseFiles"/>
       </StackPanel>
     </Grid>
@@ -152,10 +196,21 @@
     <Grid x:Name="ConsentSheet" Grid.RowSpan="4" Visibility="Collapsed">
       <Rectangle Fill="#B0000000"/>
       <Grid VerticalAlignment="Bottom" Margin="20,0,20,20">
+        <!--
+          The one near-opaque surface in the window, on purpose. Glass over glass let the
+          peer list read straight through the sheet, right behind the preview image, and
+          this is the surface where a person decides whether to let a stranger's files in.
+          Legibility wins here; the tint and edge above keep it looking like the rest.
+        -->
+        <Border CornerRadius="18" Background="#F2161616"/>
         <Border CornerRadius="18" Background="#26FFFFFF"
                 BorderBrush="{StaticResource GlassEdge}" BorderThickness="1"/>
         <Border CornerRadius="18" Background="{StaticResource GlassSheen}"/>
         <StackPanel Margin="24">
+          <ItemsControl x:Name="ConsentPreview" Height="128" Margin="0,4,0,18"
+                        ItemTemplate="{StaticResource PreviewTemplate}"
+                        ItemsPanel="{StaticResource OverlayPanel}"
+                        Visibility="Collapsed" IsHitTestVisible="False" Focusable="False"/>
           <TextBlock x:Name="ConsentTitle" Foreground="{StaticResource Label}" FontSize="16"
                      FontWeight="Light" TextWrapping="Wrap" TextAlignment="Center"/>
           <TextBlock x:Name="ConsentDetail" Foreground="{StaticResource SecondaryLabel}" FontSize="12"

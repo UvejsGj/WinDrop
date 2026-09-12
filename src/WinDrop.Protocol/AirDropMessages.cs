@@ -44,6 +44,11 @@ public sealed record AirDropFileEntry(
 /// The /Ask body. This is what the receiving user is shown before deciding, so every
 /// field in it is attacker-controlled text that will be put in front of a human — the
 /// receiver must treat it as display data, never as a filesystem path.
+///
+/// <see cref="FileIcon"/> is the one field that is not text. It is the preview shown in
+/// the receiver's prompt — a single image for the whole request, not one per file — and
+/// it arrives as encoded image bytes that a receiver decodes before anyone has agreed to
+/// anything. See <see cref="PreviewImage"/> for what that means for the decoder.
 /// </summary>
 public sealed record AirDropAskRequest(
     string SenderComputerName,
@@ -51,19 +56,32 @@ public sealed record AirDropAskRequest(
     string SenderId,
     string BundleId,
     IReadOnlyList<AirDropFileEntry> Files,
-    bool ConvertMediaFormats = false)
+    bool ConvertMediaFormats = false,
+    byte[]? FileIcon = null)
 {
     public const string FinderBundleId = "com.apple.finder";
 
-    public Dictionary<string, object?> ToPlist() => new()
+    public Dictionary<string, object?> ToPlist()
     {
-        ["SenderComputerName"] = SenderComputerName,
-        ["SenderModelName"] = SenderModelName,
-        ["SenderID"] = SenderId,
-        ["BundleID"] = BundleId,
-        ["ConvertMediaFormats"] = ConvertMediaFormats,
-        ["Files"] = Files.Select(f => (object?)f.ToPlist()).ToList(),
-    };
+        var plist = new Dictionary<string, object?>
+        {
+            ["SenderComputerName"] = SenderComputerName,
+            ["SenderModelName"] = SenderModelName,
+            ["SenderID"] = SenderId,
+            ["BundleID"] = BundleId,
+            ["ConvertMediaFormats"] = ConvertMediaFormats,
+            ["Files"] = Files.Select(f => (object?)f.ToPlist()).ToList(),
+        };
+
+        // Left out entirely when there is no preview, never written as empty data. An
+        // absent key is what opendrop sends when it has nothing to show, so it is the
+        // shape a receiver is known to cope with; a zero-length image has been seen from
+        // nobody.
+        if (FileIcon is { Length: > 0 })
+            plist["FileIcon"] = FileIcon;
+
+        return plist;
+    }
 
     public static AirDropAskRequest FromPlist(IReadOnlyDictionary<string, object?> plist)
     {
@@ -84,7 +102,10 @@ public sealed record AirDropAskRequest(
             SenderId: plist.GetValueOrDefault("SenderID") as string ?? "",
             BundleId: plist.GetValueOrDefault("BundleID") as string ?? "",
             Files: files,
-            ConvertMediaFormats: plist.GetValueOrDefault("ConvertMediaFormats") is true);
+            ConvertMediaFormats: plist.GetValueOrDefault("ConvertMediaFormats") is true,
+            // Anything other than a data object is dropped, not coerced: a string here is
+            // not an image in some other spelling, it is a peer sending nonsense.
+            FileIcon: plist.GetValueOrDefault("FileIcon") as byte[]);
     }
 }
 

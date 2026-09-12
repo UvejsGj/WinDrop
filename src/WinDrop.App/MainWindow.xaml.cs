@@ -4,6 +4,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Win32;
 using WinDrop.Protocol;
 using WinDrop.Protocol.Discovery;
@@ -13,6 +14,9 @@ namespace WinDrop.App;
 
 public partial class MainWindow : Window
 {
+    private const double SelectionPreviewBox = 84;
+    private const double ConsentPreviewBox = 116;
+
     private readonly ObservableCollection<PeerViewModel> _peers = [];
     private readonly CancellationTokenSource _shutdown = new();
     private readonly List<string> _files = [];
@@ -25,6 +29,15 @@ public partial class MainWindow : Window
     private TaskCompletionSource<bool>? _pendingConsent;
     private string _downloadDirectory = "";
 
+    // Bumped on every new selection. Previews are slow and arrive late; one that belongs
+    // to a selection the user has already replaced is dropped rather than shown.
+    private int _selection;
+    private Task<byte[]?> _fileIcon = Task.FromResult<byte[]?>(null);
+
+    // Read from the consent path, which is not on the UI thread, so it is cached here
+    // rather than asked of the visual tree at the time.
+    private double _dpiScale = 1;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -35,11 +48,23 @@ public partial class MainWindow : Window
 
         // The HWND does not exist until SourceInitialized, and applying the backdrop
         // after first render leaves a visible flash of the fallback colour.
-        SourceInitialized += (_, _) => WindowBackdrop.Apply(this);
+        SourceInitialized += (_, _) =>
+        {
+            WindowBackdrop.Apply(this);
+            _dpiScale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        };
 
         Loaded += OnLoaded;
         Closed += (_, _) => _shutdown.Cancel();
     }
+
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+        _dpiScale = newDpi.DpiScaleX;
+    }
+
+    private int PixelsFor(double box) => (int)Math.Ceiling(box * _dpiScale);
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -47,6 +72,11 @@ public partial class MainWindow : Window
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "WinDrop");
 
         Directory.CreateDirectory(_downloadDirectory);
+
+        // Paths on the command line are a selection. That is how both dropping files onto
+        // the exe and Explorer's "Send to" hand them over.
+        string[] launched = Environment.GetCommandLineArgs().Skip(1).ToArray();
+        if (launched.Length > 0) SetFiles(launched);
 
         try
         {
@@ -157,6 +187,11 @@ public partial class MainWindow : Window
         {
             var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
+            // Ready before the sheet opens, so the prompt appears whole instead of an image
+            // popping in once the user has started reading. Every step is time-boxed, so a
+            // slow or hostile preview can hold the prompt back by seconds, not indefinitely.
+            FilePreview? preview = await PreviewForAskAsync(request);
+
             await Dispatcher.InvokeAsync(() =>
             {
                 _pendingConsent = completion;
@@ -167,6 +202,9 @@ public partial class MainWindow : Window
                 ConsentDetail.Text = request.Files.Count == 1
                     ? names
                     : $"{request.Files.Count} items · {names}";
+
+                ConsentPreview.ItemsSource = preview is null ? null : PreviewItem.Stack([preview], ConsentPreviewBox);
+                ConsentPreview.Visibility = preview is null ? Visibility.Collapsed : Visibility.Visible;
 
                 ConsentSheet.Visibility = Visibility.Visible;
             });
@@ -180,6 +218,26 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// The sender's own preview when there is one we are willing to decode, otherwise the
+    /// Windows icon for the first item's type. One image either way: the protocol carries
+    /// a single preview for the whole request.
+    /// </summary>
+    private async Task<FilePreview?> PreviewForAskAsync(AirDropAskRequest request)
+    {
+        int pixels = PixelsFor(ConsentPreviewBox);
+
+        if (request.FileIcon is { } icon && await FileIconCodec.DecodeAsync(icon, pixels) is { } decoded)
+            return decoded;
+
+        // Either no icon was sent, or it was one we decline — which for opendrop is every
+        // icon, since it only ever sends JPEG 2000.
+        if (request.Files.Count == 0) return null;
+
+        AirDropFileEntry first = request.Files[0];
+        return await WithinAsync(ShellPreview.ForTypeAsync(first.FileName, first.IsDirectory), seconds: 3);
+    }
+
     private void OnAccept(object sender, RoutedEventArgs e) => ResolveConsent(true);
 
     private void OnDecline(object sender, RoutedEventArgs e) => ResolveConsent(false);
@@ -187,6 +245,8 @@ public partial class MainWindow : Window
     private void ResolveConsent(bool accepted)
     {
         ConsentSheet.Visibility = Visibility.Collapsed;
+        ConsentPreview.ItemsSource = null;
+
         _pendingConsent?.TrySetResult(accepted);
         _pendingConsent = null;
 
@@ -212,7 +272,10 @@ public partial class MainWindow : Window
 
     private async Task SendToAsync(PeerViewModel peer)
     {
+        // Snapshot the selection, icon included, before the first await: the user is free
+        // to pick different files while this one is still in flight.
         var outgoing = _files.Select(AirDropOutgoingFile.FromPath).ToList();
+        Task<byte[]?> fileIcon = _fileIcon;
         long total = outgoing.Sum(f => f.TotalBytes);
 
         peer.State = PeerState.Sending;
@@ -232,7 +295,8 @@ public partial class MainWindow : Window
                 "Windows",
                 Guid.NewGuid().ToString(),
                 AirDropAskRequest.FinderBundleId,
-                outgoing.Select(f => f.ToEntry()).ToList());
+                outgoing.Select(f => f.ToEntry()).ToList(),
+                FileIcon: await fileIcon);
 
             if (!await session.AskAsync(ask, _shutdown.Token))
             {
@@ -288,13 +352,16 @@ public partial class MainWindow : Window
 
     private void SetFiles(IEnumerable<string> paths)
     {
-        // Directories would need to be walked into cpio entries with their own paths;
-        // that is real work, so refuse them clearly rather than silently dropping them.
         string[] files = paths.Where(p => File.Exists(p) || Directory.Exists(p)).ToArray();
         int missing = paths.Count() - files.Length;
 
         _files.Clear();
         _files.AddRange(files);
+
+        int selection = ++_selection;
+
+        PreviewStack.ItemsSource = null;
+        PreviewStack.Visibility = Visibility.Collapsed;
 
         foreach (PeerViewModel peer in _peers)
         {
@@ -305,21 +372,71 @@ public partial class MainWindow : Window
 
         if (_files.Count == 0)
         {
-            FilesHeadline.Text = "Drop files here to send";
-            FilesDetail.Text = "or click to choose";
+            _fileIcon = Task.FromResult<byte[]?>(null);
+            ChooseButton.Content = "Choose";
+            FilesHeadline.Text = "Drop files here";
+            FilesDetail.Text = "folders welcome";
             return;
         }
+
+        ChooseButton.Content = "Change";
+
+        // The protocol carries one preview for the whole request, taken from the first
+        // item — the same choice opendrop makes. Started now rather than at send time, so
+        // it is ready by the time someone taps a peer.
+        _fileIcon = File.Exists(_files[0])
+            ? FileIconCodec.CreateAsync(_files[0])
+            : Task.FromResult<byte[]?>(null);
+
+        _ = ShowSelectionPreviewAsync(selection, _files.Take(3).ToList());
 
         long bytes = _files.Sum(f => AirDropOutgoingFile.FromPath(f).TotalBytes);
 
         FilesHeadline.Text = _files.Count == 1
-            ? Path.GetFileName(_files[0])
-            : $"{_files.Count} files";
+            ? Path.GetFileName(_files[0].TrimEnd(Path.DirectorySeparatorChar))
+            : $"{_files.Count} items";
 
         FilesDetail.Text = missing > 0
-            ? $"{bytes:N0} bytes · {missing} item(s) missing · tap someone to send"
-            : $"{bytes:N0} bytes · tap someone to send";
+            ? $"{FormatSize(bytes)} · {missing} item(s) missing · tap someone to send"
+            : $"{FormatSize(bytes)} · tap someone to send";
     }
+
+    private async Task ShowSelectionPreviewAsync(int selection, IReadOnlyList<string> paths)
+    {
+        int pixels = PixelsFor(SelectionPreviewBox);
+
+        FilePreview?[] loaded = await Task.WhenAll(
+            paths.Select(p => WithinAsync(ShellPreview.ForPathAsync(p, pixels), seconds: 10)));
+
+        if (selection != _selection) return;
+
+        var previews = loaded.OfType<FilePreview>().ToList();
+        if (previews.Count == 0) return;
+
+        PreviewStack.ItemsSource = PreviewItem.Stack(previews, SelectionPreviewBox);
+        PreviewStack.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>A preview is decoration: late or broken means none, never an error.</summary>
+    private static async Task<FilePreview?> WithinAsync(Task<FilePreview?> preview, double seconds)
+    {
+        try
+        {
+            return await preview.WaitAsync(TimeSpan.FromSeconds(seconds));
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} bytes",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+        < 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024):0.#} MB",
+        _ => $"{bytes / (1024.0 * 1024 * 1024):0.##} GB",
+    };
 
     // ---- chrome ------------------------------------------------------------
 

@@ -45,7 +45,7 @@ static int PrintUsage()
         WinDrop - an AirDrop implementation for Windows
 
           windrop receive [--dir <path>] [--yes]   advertise and accept transfers
-          windrop send [--to <name>| --peer <host>] <file> [file...]
+          windrop send [--to <name>| --peer <host>] [--icon <image>] <file> [file...]
           windrop browse                   list nearby peers
 
         Add --bridge <host> to any command to use a Linux box running OWL as the radio.
@@ -127,7 +127,16 @@ static Task<bool> AutoAcceptAsync(AirDropAskRequest request, CancellationToken c
     // removes the consent prompt, which is the protocol's only real security
     // boundary, so it says so loudly rather than accepting in silence.
     Console.WriteLine($"Auto-accepting {request.Files.Count} file(s) from '{request.SenderComputerName}' (--yes)");
+    DescribePreview(request);
     return Task.FromResult(true);
+}
+
+static void DescribePreview(AirDropAskRequest request)
+{
+    // Only the size and the signature. Decoding it would mean pointing an image codec at
+    // a stranger's bytes from a console tool that has nothing to show them on.
+    if (request.FileIcon is { } icon)
+        Console.WriteLine($"  preview: {icon.Length:N0} bytes, {PreviewImage.Sniff(icon)}");
 }
 
 static Task<bool> PromptAsync(AirDropAskRequest request, CancellationToken ct)
@@ -137,6 +146,8 @@ static Task<bool> PromptAsync(AirDropAskRequest request, CancellationToken ct)
 
     foreach (AirDropFileEntry file in request.Files)
         Console.WriteLine($"  {file.FileName}  [{file.FileType}]");
+
+    DescribePreview(request);
 
     Console.Write("Accept? [y/N] ");
     string? answer = Console.ReadLine();
@@ -200,6 +211,12 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
             continue;
         }
 
+        if (string.Equals(args[i], "--icon", StringComparison.OrdinalIgnoreCase))
+        {
+            if (++i < args.Length) { /* read below, once the paths are validated */ }
+            continue;
+        }
+
         if (string.Equals(args[i], "--peer", StringComparison.OrdinalIgnoreCase))
         {
             if (++i < args.Length) peerHost = args[i];
@@ -229,6 +246,24 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
 
         Console.Error.WriteLine($"Not found: {path}");
         return 1;
+    }
+
+    // --icon attaches a file's bytes, unexamined, as the /Ask preview. It is for the first
+    // session against a real Apple receiver: the same send with no icon, with a JPEG, and
+    // with opendrop's JPEG 2000 tells "the preview format matters" apart from everything
+    // else that could make an iPhone refuse a request.
+    byte[]? icon = null;
+
+    if (ArgumentValue(args, "--icon") is { } iconPath)
+    {
+        if (!File.Exists(iconPath))
+        {
+            Console.Error.WriteLine($"Not found: {iconPath}");
+            return 1;
+        }
+
+        icon = await File.ReadAllBytesAsync(iconPath, ct);
+        Console.WriteLine($"Attaching a {icon.Length:N0}-byte preview ({PreviewImage.Sniff(icon)})");
     }
 
     await using IAirDropTransport transport = CreateTransport(args);
@@ -312,7 +347,8 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
         "Windows",
         Guid.NewGuid().ToString(),
         AirDropAskRequest.FinderBundleId,
-        files.Select(f => f.ToEntry()).ToList());
+        files.Select(f => f.ToEntry()).ToList(),
+        FileIcon: icon);
 
     Console.WriteLine("Waiting for the peer to accept...");
 
