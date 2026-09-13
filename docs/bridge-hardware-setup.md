@@ -145,8 +145,31 @@ with caveats. Useful for answering the question early; not a solution.
 
 ```bash
 sudo apt update && sudo apt install -y owl
-sudo owl -i wlan0
+sudo airmon-ng check kill        # wpa_supplicant and NetworkManager fight OWL for the card
+sudo owl -i wlan0 -c 149 -v
 ```
+
+**Pass `-c`.** OWL's default channel is **6**, read from `daemon/owl.c`. iPhones sit
+mostly on 149, or 44 in some regions. Without the flag, OWL runs on the one AWDL channel a
+phone is least likely to be listening on, and the failure looks exactly like an
+incompatible card.
+
+OWL's options, from its `getopt` string `"Dc:dvi:h:a:t:fN"`:
+
+| Flag | Meaning |
+|---|---|
+| `-i <iface>` | wireless interface (required) |
+| `-c <n>` | channel: 6, 44 or 149 |
+| `-v`, `-vv` | more logging |
+| `-f` | turn off RSSI filtering, worth trying if a nearby phone is never seen |
+| `-D` | daemonize |
+| `-d` | dump frames |
+| `-N` | skip monitor mode. Nexmon only; the README warns it causes problems otherwise |
+| `-h <name>` | name of the interface OWL creates, default `awdl0` |
+
+There is **no help flag**. `owl -h` fails with "option requires an argument -- 'h'",
+which looks like a broken install and is not one. Measured on Kali's
+`owl 0~git20220130-0kali1+b1`.
 
 In a second terminal, confirm the radio now exists:
 
@@ -318,7 +341,7 @@ sudo iw list | grep -A10 "Supported interface modes"
 sudo apt install -y cmake libpcap-dev libnl-3-dev libnl-genl-3-dev libev-dev
 git clone --recursive https://github.com/seemoo-lab/owl.git ~/owl
 cd ~/owl && mkdir build && cd build && cmake .. && make
-sudo ./owl -i wlan0
+sudo ./owl -i wlan0 -c 149 -v
 ```
 
 **Check:** in another shell, `ip addr show awdl0` should show an interface with an
