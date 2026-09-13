@@ -31,6 +31,7 @@ public sealed class MulticastDns : IAsyncDisposable
 
     private readonly List<Socket> _sockets = [];
     private readonly List<int> _interfaces = [];
+    private readonly List<string> _interfaceNames = [];
     private readonly CancellationTokenSource _stopping = new();
     private readonly List<Task> _readers = [];
 
@@ -38,6 +39,13 @@ public sealed class MulticastDns : IAsyncDisposable
 
     /// <summary>Interface indices we joined, in the order they were found.</summary>
     public IReadOnlyList<int> Interfaces => _interfaces;
+
+    /// <summary>
+    /// The same joins, as "name/family". Printed at startup because the question that
+    /// matters in the field — did we join the link the peer is on, e.g. awdl0 — is
+    /// otherwise invisible: a missed interface fails silently, as an empty browse.
+    /// </summary>
+    public IReadOnlyList<string> InterfaceNames => _interfaceNames;
 
     public void Start()
     {
@@ -50,17 +58,17 @@ public sealed class MulticastDns : IAsyncDisposable
             IPInterfaceProperties properties = nic.GetIPProperties();
 
             if (nic.Supports(NetworkInterfaceComponent.IPv6))
-                TryJoin(AddressFamily.InterNetworkV6, properties.GetIPv6Properties()?.Index);
+                TryJoin(AddressFamily.InterNetworkV6, properties.GetIPv6Properties()?.Index, nic.Name);
 
             if (nic.Supports(NetworkInterfaceComponent.IPv4))
-                TryJoin(AddressFamily.InterNetwork, properties.GetIPv4Properties()?.Index);
+                TryJoin(AddressFamily.InterNetwork, properties.GetIPv4Properties()?.Index, nic.Name);
         }
 
         if (_sockets.Count == 0)
             throw new InvalidOperationException("No multicast-capable interface is up.");
     }
 
-    private void TryJoin(AddressFamily family, int? index)
+    private void TryJoin(AddressFamily family, int? index, string name)
     {
         if (index is not { } interfaceIndex) return;
 
@@ -97,6 +105,7 @@ public sealed class MulticastDns : IAsyncDisposable
 
             _sockets.Add(socket);
             _interfaces.Add(interfaceIndex);
+            _interfaceNames.Add($"{name}/{(family == AddressFamily.InterNetworkV6 ? "IPv6" : "IPv4")}");
             _readers.Add(Task.Run(() => ReadLoopAsync(socket, family, _stopping.Token)));
         }
         catch (SocketException)

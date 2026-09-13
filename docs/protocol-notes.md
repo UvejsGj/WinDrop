@@ -537,3 +537,33 @@ after an AWDL MAC rotation.
    its time on 44?
 4. Does a non-Apple receiver appear in the iOS 26.6 share sheet? That needs a successful
    `/Discover`, so it answers 2 and 3 as well.
+
+#### 2026-09-13 — MEASURED: WinDrop's own receiver runs on Linux
+
+Before pointing our receiver at `awdl0`, a self-contained `linux-x64` build of the CLI was
+run in WSL2 (Ubuntu 22.04). Two parts of it had never run anywhere but Windows: TLS, where
+.NET uses OpenSSL on Linux instead of SChannel, and the socket options mDNS depends on.
+
+- **Transfers:** Windows CLI to the Linux receiver, over IPv4 and over a scoped IPv6
+  link-local address (`fe80::…%39`). Three files arrived byte-identical by MD5. The
+  receiver identified the /Ask preview as a 7,733-byte JPEG.
+- **mDNS:** `windrop browse` inside WSL found the receiver at its scoped link-local
+  address (`%2`, eth0), with flags `0xA`.
+- **The interface filter.** Both mDNS and the address list skip interfaces that are not
+  `OperationalStatus.Up`. Virtual links often report operstate `unknown`, and OWL's
+  `awdl0` may be one of them. If .NET mapped that to anything but `Up`, the receiver
+  would ignore `awdl0` and fail silently. Test: a dummy interface with operstate
+  `unknown` and a link-local address. Membership of `ff02::fb` was captured before,
+  during and after the run, so a join by some other daemon could not pass for ours:
+
+  ```
+  BEFORE windrop:  eth0: -        wdtest0: -
+  DURING windrop:  eth0: joined   wdtest0: joined
+  AFTER windrop:   eth0: -        wdtest0: -
+  ```
+
+  The worry is refuted: an operstate-`unknown` link is joined. A dummy interface stands in
+  for OWL's device here; `awdl0` itself has not been tested this way.
+- **Visibility in the field.** `receive` now prints the joined interfaces at startup
+  (`mDNS on eth0/IPv6, …`). Whether `awdl0` was joined becomes a line to read, not
+  something inferred from an empty share sheet.

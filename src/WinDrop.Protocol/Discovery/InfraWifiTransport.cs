@@ -34,6 +34,9 @@ public sealed class InfraWifiTransport : IAirDropTransport
     /// <summary>See the class remarks: correct records, wrong link layer for an iPhone.</summary>
     public bool CanReachAppleDevices => false;
 
+    /// <summary>Where mDNS was joined, as "name/family". Empty until first used.</summary>
+    public IReadOnlyList<string> ListeningOn => _mdns.InterfaceNames;
+
     private void EnsureStarted()
     {
         lock (_gate)

@@ -91,6 +91,9 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
     await using IAsyncDisposable advertisement = await transport.AdvertiseAsync(record, ct);
 
     Console.WriteLine($"Receiving as '{instance}' on port {record.Port}");
+
+    if (transport is InfraWifiTransport infra)
+        Console.WriteLine($"mDNS on {string.Join(", ", infra.ListeningOn)}");
     Console.WriteLine($"Saving to {directory}");
     Console.WriteLine("Ctrl+C to stop.\n");
 
