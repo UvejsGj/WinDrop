@@ -64,10 +64,33 @@ actually hold the radio afterwards.
 A live USB never mounts or writes to the installed system, so a machine whose Windows
 password has been forgotten is still perfectly usable here.
 
-Its Broadcom is driven by `b43`, which supports monitor mode and injection on many
-BCM43xx parts. Kali ships more non-free firmware than Ubuntu does, which matters for
-Broadcom specifically — if Wi-Fi does not come up at all, that is usually why, and it is
-worth checking `dmesg | grep -i firmware` before concluding the card is unsuitable.
+**Identify the exact Broadcom part before predicting anything.** An earlier version of
+this page said a spare laptop's Broadcom would be driven by `b43`. The first one actually
+tested, an HP dv6, was a **BCM4313 `[14e4:4727]`**, whose LCN-PHY `b43` only ever
+supported experimentally. In practice it is served by the in-kernel `brcmsmac` (over the
+`bcma` bus), or by the proprietary `wl`, which has no monitor mode. It is also **2.4 GHz
+only**. If Wi-Fi does not come up at all, check `dmesg | grep -i brcm` for missing
+firmware before judging the card.
+
+#### 2026-09-13 — MEASURED: the dv6's BCM4313 fails
+
+Kali live on the HP dv6:
+
+```
+lspci -k                    Kernel driver in use: bcma-pci-bridge   (bus; radio driver on top not captured)
+Supported interface modes   IBSS, managed, AP, AP/VLAN, monitor
+active monitor              (no output)
+5 GHz channels              0
+```
+
+The card has monitor mode but not active monitor, and a single 2.4 GHz band. That is
+two independent strikes, so OWL was not attempted on it. The dv6 stays useful as the
+bridge host, because it has RTL8111 gigabit Ethernet for the link to Windows; the radio
+has to be a USB adapter.
+
+When a second radio is present, use `sudo iw list | grep -i "active monitor"` rather
+than naming `phy0`. It covers every phy, and a dongle will not be `phy0` beside an
+internal card.
 
 **Then the main desktop, if you want a second data point.** Its Intel card is a dead end
 *on Windows*, but `iwlwifi` on a modern kernel does support monitor mode and injection,
@@ -126,12 +149,25 @@ A card that shows both is worth trying. A card that shows monitor but not active
 may still work — OWL calls the absence a throughput problem, and Atheros dongles are
 reported to acknowledge frames in practice regardless — but it is a gamble.
 
+**Check the band as well.** AWDL runs mainly on 5 GHz (channel 149, or 44 in some
+regions). A 2.4 GHz channel exists in the protocol, but a single-band 2.4 GHz card is a
+long shot however well it scores on the other two checks. This counts the 5 GHz
+channels a card offers; zero means it cannot reach them:
+
+```bash
+sudo iw list | grep -cE " 5[0-9]{3}(\.0)? MHz"
+```
+
+**A weak radio does not rule out the machine.** The bridge needs only some capable radio
+plus an IP link to the Windows host. A laptop whose internal card fails these checks can
+still host the bridge, with a USB adapter for AWDL and Ethernet to Windows.
+
 ### Options, cheapest first
 
-**1. The Broadcom you already own.** An old laptop's built-in card, driven by `b43`,
-which supports monitor mode and injection on many BCM43xx parts. Costs nothing, and a
-Linux live USB does not need the machine's Windows password. Run the two commands above.
-If they pass, buy nothing.
+**1. The Broadcom you already own.** Costs nothing, and a Linux live USB does not need
+the machine's Windows password. Which driver applies depends on the exact part (see
+above). The one on hand is a 2.4 GHz-only BCM4313, so expect this option to fail and treat
+it as a free measurement. If all three checks pass, buy nothing.
 
 **2. A Raspberry Pi.** Kali's `brcmfmac-nexmon-dkms` and `firmware-nexmon` packages give
 monitor mode and frame injection on the built-in radio of the Pi 5, 4, 3B, Zero 2 W and
@@ -148,9 +184,9 @@ everywhere. Untested with OWL, but it advertises the right thing.
 ten dollars even where local shops have none. Slowest, but it is the family OWL is
 actually developed against, and that counts for more than a specification sheet.
 
-Note that options 1 and 2 avoid the driver build in Phase 2 entirely, since `b43` and
-`brcmfmac` ship differently — check whether your kernel already has them before assuming
-you need to compile anything.
+Note that options 1 and 2 avoid the driver build in Phase 2 entirely, since `brcmsmac`
+and `brcmfmac` ship differently — check whether your kernel already has them before
+assuming you need to compile anything.
 
 ## Phase 1 — pass the adapter into WSL2
 
