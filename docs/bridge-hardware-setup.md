@@ -104,6 +104,35 @@ radio is a removable PCIe Mini Card, so a dual-band Atheros card is a possible
 replacement. HP BIOSes of the period refuse unlisted Wi-Fi cards at POST, so it would
 have to be an HP-branded spare listed for the model.
 
+#### 2026-09-13 — MEASURED: the main PC's Intel AX211 passes the band check, not active monitor
+
+MSI Sword 16 HX, Kali live, Secure Boot left on:
+
+```
+lspci -nn                   Intel 700 Series Chipset Family CNVi Wi-Fi [8086:7a70] (rev 11)
+active monitor              (no output)
+channel 6    2437 MHz       (22.0 dBm)
+channel 44   5220 MHz       (22.0 dBm)
+channel 149  5745 MHz       (22.0 dBm)
+6 GHz ch 149 6695 MHz       (22.0 dBm) (no IR)
+```
+
+This is the first card on hand that may transmit on AWDL's 5 GHz channels. That was not a
+given: Intel's location-aware regulatory handling often marks 5 GHz no-IR until it has
+seen an access point. It still does not advertise active monitor.
+
+OWL is worth attempting on it anyway, for a reason specific to the protocol. Active
+monitor governs whether the card ACKs **unicast** frames addressed to it. 802.11 never
+ACKs multicast, and AirDrop's discovery is mDNS over multicast. If OWL can synchronise
+at all, the iPhone's announcements should show up on `awdl0` whether or not ACKs work,
+and that separates "cannot join the link" from "joins but unicast suffers". The first
+observation to make is therefore `tcpdump -i awdl0` with the share sheet open, not a
+full transfer.
+
+This machine cannot be the permanent bridge: the AX211 is CNVi and cannot be passed
+into WSL2, and the PC cannot run Linux while running Windows. It can answer whether
+current iOS will sync with a Linux AWDL peer at all.
+
 When a second radio is present, use `sudo iw list | grep -i "active monitor"` rather
 than naming `phy0`. It covers every phy, and a dongle will not be `phy0` beside an
 internal card.
