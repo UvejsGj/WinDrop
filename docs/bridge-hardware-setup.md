@@ -88,6 +88,22 @@ two independent strikes, so OWL was not attempted on it. The dv6 stays useful as
 bridge host, because it has RTL8111 gigabit Ethernet for the link to Windows; the radio
 has to be a USB adapter.
 
+#### 2026-09-13 — MEASURED: an HP ProBook 6450b fails the same way
+
+The regulatory label reads "Intel WLAN … 112BNHMW", the Intel WiFi Link 1000, a
+2.4 GHz-only part. The `lspci` line was not captured, so the identity rests on the
+label. Kali live results:
+
+```
+active monitor              (no output)
+5 GHz channels              0
+```
+
+Both laptops on hand have failed on both counts. On machines of this era the internal
+radio is a removable PCIe Mini Card, so a dual-band Atheros card is a possible
+replacement. HP BIOSes of the period refuse unlisted Wi-Fi cards at POST, so it would
+have to be an HP-branded spare listed for the model.
+
 When a second radio is present, use `sudo iw list | grep -i "active monitor"` rather
 than naming `phy0`. It covers every phy, and a dongle will not be `phy0` beside an
 internal card.
