@@ -464,3 +464,76 @@ so one AWDL session can separate these cases: no icon, a JPEG, and opendrop's JP
    preview, or the transfer?
 3. What size does Apple send, and does it also send the 64 px variant opendrop left
    commented out?
+
+## AWDL from a non-Apple peer (the iPhone path)
+
+Identifiers below are redacted with width-preserving placeholders, as elsewhere in these
+notes: device name, AWDL MACs, the link-local addresses derived from them, and OWL's
+peer UUIDs.
+
+#### 2026-09-13 — OBSERVED: iOS 26.6 is visible to OWL on awdl0
+
+Setup: MSI Sword 16 HX, Intel AX211 `[8086:7a70]`, Kali Live, OWL
+`0~git20220130-0kali1+b1`. iPhone on iOS 26.6, AirDrop set to Everyone for 10 Minutes,
+share sheet **closed**. The configuration that worked, and why, is in
+`bridge-hardware-setup.md`: monitor mode set by hand, OWL with `-N`, channel 6.
+
+OWL's log:
+
+```
+DEBUG: Channel 6 [2437 MHz] is available for frame injection
+INFO : add peer xx:xx:xx:xx:xx:xx (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+DEBUG: new election tree: xx:xx:xx:xx:xx:xx -> xx:xx:xx:xx:xx:xx (met 115, ctr 865)
+INFO : add peer xx:xx:xx:xx:xx:xx (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+```
+
+The phone advertised a channel sequence of mostly 44 and occasionally 6.
+
+`tcpdump -i awdl0`, three packets of this form:
+
+```
+IP6 fe80::xxxx:xxff:fexx:xxxx.5353 > ff02::fb.5353: PTR <owner>'s iPhone._applicationServicePairing._tcp.local., PTR <owner>'s iPhone._appSvcPrePair._tcp.local. (126)
+```
+
+The source is the EUI-64 link-local address of the first peer OWL added. That ties the
+mDNS traffic to the AWDL peer, rather than to anything else OWL happened to decapsulate.
+
+**What this settles**
+
+- OWL synchronises with a current iPhone: it built an election tree with the phone as
+  master, and decapsulated the phone's data frames into `awdl0`. The fear that iOS 16+
+  would shut non-Apple devices out does not apply at the link layer, at least not to
+  receiving.
+- A card without active monitor mode receives AWDL discovery traffic. This was predicted
+  and is now observed. Active monitor only affects ACKs for unicast frames, and mDNS is
+  multicast.
+- The iPhone announces services on AWDL **without** the share sheet open.
+
+**What it does not settle**
+
+- Whether the phone sends **unicast** frames to us, and whether they survive a card that
+  cannot ACK them. Multicast needs neither.
+- Whether the phone considers us a peer at all, as opposed to us merely following its
+  schedule and overhearing it.
+
+**Not observed:** `_airdrop._tcp`. That is expected with the share sheet closed, and the
+roles matter here. A **sender** browses, so with the share sheet open, expect mDNS
+*queries* for `_airdrop._tcp.local` from the phone, not announcements. An iPhone
+*advertises* `_airdrop._tcp` only as a receiver, once woken.
+
+`_applicationServicePairing._tcp` and `_appSvcPrePair._tcp` are new to these notes and
+unattributed.
+
+**The second peer** is unidentified: another Apple device nearby, or the same phone
+after an AWDL MAC rotation.
+
+### Open questions
+
+1. With the share sheet open, does the phone send mDNS queries for `_airdrop._tcp` on
+   awdl0?
+2. Given a receiver advertised on awdl0, does the phone open TCP to it? A SYN to the
+   advertised port answers this without any application-layer code.
+3. Does unicast complete on channel 6 alone, without ACKs, while the phone spends most of
+   its time on 44?
+4. Does a non-Apple receiver appear in the iOS 26.6 share sheet? That needs a successful
+   `/Discover`, so it answers 2 and 3 as well.

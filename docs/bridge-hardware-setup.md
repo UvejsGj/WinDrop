@@ -117,9 +117,18 @@ channel 149  5745 MHz       (22.0 dBm)
 6 GHz ch 149 6695 MHz       (22.0 dBm) (no IR)
 ```
 
-This is the first card on hand that may transmit on AWDL's 5 GHz channels. That was not a
-given: Intel's location-aware regulatory handling often marks 5 GHz no-IR until it has
-seen an access point. It still does not advertise active monitor.
+**Correction, same day:** those channel flags depend on state, and this reading does not
+hold for OWL. It was taken while Kali was associated to an access point. The AX211's
+regulatory domain is **self-managed** (`iw reg get` → `phy#0 (self-managed)`, and
+`iw reg set` is ignored), and once `wpa_supplicant` is killed for OWL the table changes:
+
+```
+channel 149  5745 MHz   passive / no IR          (no transmission)
+channel 44   5220 MHz   IR-CONCURRENT            (transmit only alongside an existing connection)
+channel 6    2437 MHz   unrestricted
+```
+
+So for OWL this card has **channel 6 only**. It does not advertise active monitor.
 
 OWL is worth attempting on it anyway, for a reason specific to the protocol. Active
 monitor governs whether the card ACKs **unicast** frames addressed to it. 802.11 never
@@ -132,6 +141,49 @@ full transfer.
 This machine cannot be the permanent bridge: the AX211 is CNVi and cannot be passed
 into WSL2, and the PC cannot run Linux while running Windows. It can answer whether
 current iOS will sync with a Linux AWDL peer at all.
+
+#### 2026-09-13 — MEASURED: OWL runs on the AX211, with two workarounds
+
+Plain `owl -i wlan0 -c 149 -v` fails immediately:
+
+```
+ERROR: Error while receiving via netlink: Operation not supported
+ERROR: Could not put device in monitor mode: wlan0
+ERROR: could not initialize core
+```
+
+OWL requests monitor mode with the *active* flag, which is exactly what `iwlwifi` refuses.
+Plain monitor mode works, so set it up by hand and tell OWL not to touch it with `-N`.
+The README reserves `-N` for Nexmon, but here it is the workaround. Channel 149 then
+starts but reports `Cannot inject frames on channel 149`, which is the self-managed
+regulatory rule above. The working sequence:
+
+```bash
+sudo airmon-ng check kill
+sudo ip link set wlan0 down
+sudo iw dev wlan0 set type monitor
+sudo ip link set wlan0 up
+sudo iw dev wlan0 set channel 6
+sudo owl -i wlan0 -c 6 -v -N
+```
+
+Check that OWL's log says `Channel 6 [2437 MHz] is available for frame injection`, and
+that `awdl0` comes up with a link-local address. With an iPhone nearby, `add peer` lines
+follow within seconds. `-f` was not needed. What the phone sent is recorded in
+`protocol-notes.md`.
+
+Channel 6 is a compromise. The iPhone's sequence was mostly 44, so the two radios overlap
+only in its occasional channel-6 slots. That was enough for discovery; whether it is
+enough for a transfer is untested.
+
+An untested idea for 44: `IR-CONCURRENT` permits transmission alongside an existing
+connection on that channel. Staying associated to an access point on channel 44, with a
+second, monitor-type interface beside it, might satisfy the rule. `iwlmvm` may refuse
+that interface combination outright.
+
+**Typing commands from a phone.** Autocorrected quotes break shell quoting, and a quoted
+`"libarchive-c==2.9"` arrived as `libarchive-c=2.9`. Pin with `==` and no quotes, and
+avoid `<` and `>` in version specifiers: unquoted, the shell reads them as redirections.
 
 When a second radio is present, use `sudo iw list | grep -i "active monitor"` rather
 than naming `phy0`. It covers every phy, and a dongle will not be `phy0` beside an
@@ -149,10 +201,14 @@ sudo airmon-ng check kill        # wpa_supplicant and NetworkManager fight OWL f
 sudo owl -i wlan0 -c 149 -v
 ```
 
-**Pass `-c`.** OWL's default channel is **6**, read from `daemon/owl.c`. iPhones sit
-mostly on 149, or 44 in some regions. Without the flag, OWL runs on the one AWDL channel a
-phone is least likely to be listening on, and the failure looks exactly like an
-incompatible card.
+**Pass `-c`, and choose the channel from what the card may transmit on.** OWL's default
+channel is **6**, read from `daemon/owl.c`. iPhones spend most of their time on 5 GHz:
+149 or 44 by common report, and an iOS 26.6 phone measured here showed mostly 44. So 5 GHz
+is the first choice where the card allows transmission there. On a card with
+self-managed regulatory rules it may not, and then 6 is the only channel that works;
+that is what the AX211 needed (below). Check OWL's log for `available for frame
+injection`. A `Cannot inject frames` warning on the chosen channel produces the same
+silence as an incompatible card.
 
 OWL's options, from its `getopt` string `"Dc:dvi:h:a:t:fN"`:
 
@@ -164,7 +220,7 @@ OWL's options, from its `getopt` string `"Dc:dvi:h:a:t:fN"`:
 | `-f` | turn off RSSI filtering, worth trying if a nearby phone is never seen |
 | `-D` | daemonize |
 | `-d` | dump frames |
-| `-N` | skip monitor mode. Nexmon only; the README warns it causes problems otherwise |
+| `-N` | skip OWL's own monitor-mode setup. The README reserves it for Nexmon, but it is also the workaround for cards that refuse *active* monitor (`iwlwifi`): set plain monitor mode and the channel by hand first |
 | `-h <name>` | name of the interface OWL creates, default `awdl0` |
 
 There is **no help flag**. `owl -h` fails with "option requires an argument -- 'h'",
