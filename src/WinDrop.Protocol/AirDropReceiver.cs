@@ -175,7 +175,7 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
         if (isRawCpio)
             await body.CopyToAsync(archive, ct);
         else
-            await AirDropCompression.DecompressAsync(body, archive, isDvZip: !isGzip, ct);
+            await AirDropCompression.DecompressAsync(body, archive, isDvZip: !isGzip, options.Log, ct);
 
         archive.Position = 0;
 

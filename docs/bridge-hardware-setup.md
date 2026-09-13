@@ -190,6 +190,20 @@ in `bin/release`, and `dotnet run -c Release --no-build` then finds nothing. Win
 never shows this. The dependable form is to publish to a fixed folder and run the DLL
 from it: `dotnet publish … -c Release -o ~/wd`, then `dotnet ~/wd/windrop.dll`.
 
+**Start OWL first, then the receiver, every time.** Restarting OWL destroys and recreates
+`awdl0`. A receiver started earlier keeps its sockets on the old interface and silently
+drops out of the AirDrop row. Changing any OWL setting therefore means restarting both,
+in that order.
+
+**Keep the phone close.** On channel 6 with the AX211, a transfer failed with the phone
+barely visible in OWL's peer list, and then succeeded with it touching the PC. The phone
+favours other channels, so every channel-6 slot counts.
+
+**Take the human out of timing tests.** `receive --yes` accepts without a prompt. iOS
+reported "Declined" twice while a person was still typing `y`, which may be `/Ask`
+timing out. Use `--yes` only while testing: it removes the consent prompt, which is the
+protocol's only real security boundary.
+
 When a second radio is present, use `sudo iw list | grep -i "active monitor"` rather
 than naming `phy0`. It covers every phy, and a dongle will not be `phy0` beside an
 internal card.

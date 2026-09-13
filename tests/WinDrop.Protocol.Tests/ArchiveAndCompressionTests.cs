@@ -474,6 +474,70 @@ public class DvZipTests
         byte[] compressed = await CompressAsync(Compressible(1000));
         await Assert.ThrowsAsync<DvZipFormatException>(() => DecompressAsync(compressed[..2]));
     }
+
+    private static byte[] ZlibBlock(byte[] content)
+    {
+        using var compressed = new MemoryStream();
+        using (var deflate = new ZLibStream(compressed, CompressionLevel.Optimal, leaveOpen: true))
+            deflate.Write(content);
+
+        var framed = new byte[4 + compressed.Length];
+        BinaryPrimitives.WriteUInt32BigEndian(framed, (uint)compressed.Length);
+        compressed.ToArray().CopyTo(framed, 4);
+        return framed;
+    }
+
+    private static byte[] StoredBlock(byte[] content)
+    {
+        var framed = new byte[4 + content.Length];
+        BinaryPrimitives.WriteUInt32BigEndian(framed, DvZip.StoredFlag | (uint)content.Length);
+        content.CopyTo(framed, 4);
+        return framed;
+    }
+
+    [Fact]
+    public async Task A_stored_block_with_the_header_an_iPhone_sent_is_copied_raw()
+    {
+        // 0x80020000: bit 31 set, and 0x20000 = 131,072 bytes. The first large iPhone
+        // upload was refused on exactly this header, read whole as a 2 GB block.
+        var raw = new byte[0x20000];
+        Random.Shared.NextBytes(raw);
+
+        byte[] opening = "070701 the opening cpio header"u8.ToArray();
+        byte[] closing = "TRAILER!!!"u8.ToArray();
+
+        byte[] first = ZlibBlock(opening);
+        byte[] stream = [.. first, .. StoredBlock(raw), .. ZlibBlock(closing)];
+        Assert.Equal(0x80020000u, BinaryPrimitives.ReadUInt32BigEndian(stream.AsSpan(first.Length, 4)));
+
+        var log = new List<string>();
+        var output = new MemoryStream();
+        await DvZip.DecompressAsync(new MemoryStream(stream), output, log.Add);
+
+        byte[] expected = [.. opening, .. raw, .. closing];
+        Assert.Equal(expected, output.ToArray());
+
+        Assert.Contains(log, line => line.StartsWith("dvzip: block 2 is stored (header 0x80020000), starts ", StringComparison.Ordinal));
+        Assert.Equal("dvzip: 3 block(s), 2 zlib, 1 stored", log[^1]);
+    }
+
+    [Fact]
+    public async Task A_stored_block_is_still_held_to_the_size_limit()
+    {
+        var hostile = new byte[8];
+        BinaryPrimitives.WriteUInt32BigEndian(hostile, DvZip.StoredFlag | (uint)(DvZip.MaxBlockLength + 1));
+
+        await Assert.ThrowsAsync<DvZipFormatException>(() => DecompressAsync(hostile));
+    }
+
+    [Fact]
+    public async Task A_zero_length_stored_block_is_refused()
+    {
+        var hostile = new byte[4];
+        BinaryPrimitives.WriteUInt32BigEndian(hostile, DvZip.StoredFlag);
+
+        await Assert.ThrowsAsync<DvZipFormatException>(() => DecompressAsync(hostile));
+    }
 }
 
 public class CompressionNegotiationTests

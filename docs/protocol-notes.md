@@ -648,3 +648,85 @@ not. iOS listed us with only two bits, so none of the others gates a photo trans
 3. Can the `EAGAIN` bursts be reduced (socket send buffer, `txqueuelen`)? At what file
    size does the transfer give out?
 4. Would advertising more flag bits change what iOS sends?
+
+#### 2026-09-13 — OBSERVED: the first complete AirDrop from an iPhone to WinDrop
+
+Same setup, with the receiver at `3bf2e92`.
+
+**Test 1, a 36 KB photo: success.**
+
+```
+'<owner>'s iPhone' (iPhone) wants to send:
+  IMG_xxxx.JPG  [public.jpeg]
+  preview: 48,870 bytes, Jpeg2000
+Accepted.
+  upload: dvzip, first bytes 0000002D789C
+  member . (directory)
+  member ./IMG_xxxx.JPG (36,454 bytes)
+```
+
+The 36,454-byte file opened correctly. That settles the first two questions above:
+
+- **iOS sends DVZip to a receiver that advertises it, and our reader has the framing
+  right.** `0000002D` is a 45-byte block length and `789C` is a zlib header. Our DVZip
+  reader has now worked against Apple, not just against our own writer. The other
+  direction, whether Apple can read *our* DVZip, is still untested.
+- The root-member fix works.
+- Blocks are not a fixed size. A 45-byte compressed block can only be the cpio header for
+  `.`.
+
+The first attempt at Test 1 failed before any data moved
+(`Unable to write data to the transport connection`), while the phone was barely present
+on channel 6. With the phone touching the PC it worked.
+
+**Test 2, a photo iOS converted from HEIC: refused by our DVZip reader.**
+
+```
+  upload: dvzip, first bytes 0001FEF3789C
+Connection failed: Block of 2147614720 bytes exceeds the 16777216 byte limit.
+```
+
+2147614720 is `0x80020000`, and without bit 31 it is `0x20000`: exactly 128 KiB. Two
+readings of bit 31 were weighed:
+
+- **"More blocks follow."** Refuted by Test 1. Its 45-byte first block was necessarily
+  followed by more, yet `0000002D` has bit 31 clear.
+- **"Stored raw."** Consistent with everything seen. The file was a JPEG, whose image
+  data deflate cannot shrink, so a sender that stores incompressible blocks uncompressed
+  would emit exactly a full 128 KiB raw block with a flag. Test 1's blocks never needed
+  it.
+
+**Implemented: bit 31 marks a stored block.** Its length is the low 31 bits, the 16 MiB
+limit applies to that length, and the bytes are copied through. This is a reading, not a
+confirmation. The receiver logs the first stored block's leading bytes and a per-upload
+count of zlib and stored blocks. Raw JPEG bytes there, and a file that opens, confirm it;
+`78 xx` there would refute it.
+
+Also seen in Test 2:
+
+- **iOS converted the photo.** The file was named with a UUID
+  (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.JPG`) rather than `IMG_xxxx`, and arrived as
+  JPEG. This fits a comment in opendrop's receiver: advertise no media capabilities and a
+  receiver gets legacy formats. Our `/Discover` response advertises none either.
+- **"Declined" despite consent.** Twice the phone showed "Declined" although `y` had been
+  typed at the prompt. The likeliest explanation is `/Ask` timing out, or the link
+  dropping, while waiting on a person; iOS would report either as a decline. Unverified.
+  `receive --yes` removes the human delay and will separate the two.
+
+**Injection errors do not separate success from failure.** Cumulative counts of
+`unable to inject packet`: 93 after a failed first attempt, 217 after the successful
+transfer (about 124 during it), and 327 after the failed large one (about 110 during it).
+The success had *more* errors than the failure. `EAGAIN` limits throughput; it did not
+cause Test 2 to fail. The `wmem` and `txqueuelen` experiments did not run, because OWL
+was never restarted into their log files, so there is no conclusion on either.
+
+**Operational:** restarting OWL destroys and recreates `awdl0`. The receiver keeps its
+sockets on the old interface and drops out of the AirDrop row. Start OWL first and the
+receiver after it, every time.
+
+### Open questions
+
+1. Does bit 31 mean stored? The next large transfer logs the first stored block.
+2. With that fix, does a 1–3 MB photo complete, and at what size does transfer give out?
+3. Do the "Declined" results persist with `--yes`?
+4. Do `wmem_default` or `txqueuelen` change the `EAGAIN` rate?
