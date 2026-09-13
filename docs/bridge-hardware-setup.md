@@ -185,6 +185,11 @@ that interface combination outright.
 `"libarchive-c==2.9"` arrived as `libarchive-c=2.9`. Pin with `==` and no quotes, and
 avoid `<` and `>` in version specifiers: unquoted, the shell reads them as redirections.
 
+**Configuration names are case-sensitive on Linux.** A build typed as `-c release` lands
+in `bin/release`, and `dotnet run -c Release --no-build` then finds nothing. Windows
+never shows this. The dependable form is to publish to a fixed folder and run the DLL
+from it: `dotnet publish … -c Release -o ~/wd`, then `dotnet ~/wd/windrop.dll`.
+
 When a second radio is present, use `sudo iw list | grep -i "active monitor"` rather
 than naming `phy0`. It covers every phy, and a dongle will not be `phy0` beside an
 internal card.

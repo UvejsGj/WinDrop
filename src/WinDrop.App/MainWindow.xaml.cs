@@ -324,8 +324,8 @@ public partial class MainWindow : Window
         if (request.FileIcon is { } icon && await FileIconCodec.DecodeAsync(icon, pixels) is { } decoded)
             return decoded;
 
-        // Either no icon was sent, or it was one we decline — which for opendrop is every
-        // icon, since it only ever sends JPEG 2000.
+        // Either no icon was sent, or it was one we decline. For opendrop and for iPhones
+        // that is every icon: both send JPEG 2000.
         if (request.Files.Count == 0) return null;
 
         AirDropFileEntry first = request.Files[0];

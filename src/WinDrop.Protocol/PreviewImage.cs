@@ -15,10 +15,11 @@ public enum PreviewImageFormat { Unknown, Jpeg, Png, Jpeg2000 }
 /// caller pick one specific in-box decoder, or none.
 ///
 /// The format a peer actually sends is not the one you would guess. opendrop encodes its
-/// icon as JPEG 2000 (<c>util.generate_file_icon</c>, 540px bounding box), presumably
-/// because that is what its authors saw Apple send. Nothing on Windows decodes that out of
-/// the box, so recognising it matters mostly so it can be declined cleanly rather than
-/// thrown at a decoder to see what happens.
+/// icon as JPEG 2000 (<c>util.generate_file_icon</c>, 540px bounding box), and so does
+/// iOS 26.6: both previews from the first real iPhone transfer sniffed as JPEG 2000
+/// (observed 2026-09-13). Nothing on Windows decodes that out of the box, so recognising
+/// it matters mostly so it can be declined cleanly rather than thrown at a decoder to see
+/// what happens.
 /// </summary>
 public static class PreviewImage
 {

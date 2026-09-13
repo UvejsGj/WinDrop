@@ -459,7 +459,8 @@ so one AWDL session can separate these cases: no icon, a JPEG, and opendrop's JP
 
 ### Open questions
 
-1. Does Apple send JPEG 2000 as well? opendrop suggests so. Unobserved.
+1. ~~Does Apple send JPEG 2000 as well?~~ **Yes.** iOS 26.6 sent JPEG 2000 previews
+   of 43,442 and 54,397 bytes (observed 2026-09-13, below).
 2. Does iOS accept a JPEG `FileIcon`? A PNG? Does a format it dislikes cost only the
    preview, or the transfer?
 3. What size does Apple send, and does it also send the 64 px variant opendrop left
@@ -567,3 +568,83 @@ run in WSL2 (Ubuntu 22.04). Two parts of it had never run anywhere but Windows: 
 - **Visibility in the field.** `receive` now prints the joined interfaces at startup
   (`mDNS on eth0/IPv6, …`). Whether `awdl0` was joined becomes a line to read, not
   something inferred from an empty share sheet.
+
+#### 2026-09-13 — OBSERVED: iOS 26.6 AirDrops to WinDrop's receiver, as far as /Upload
+
+Kali Live on the AX211, OWL on channel 6 with `-N`, and WinDrop's CLI receiver built from
+source on Kali at `1554b30`. It started with `mDNS on eth0/IPv6, eth0/IPv4, awdl0/IPv6`.
+The iPhone had AirDrop set to Everyone for 10 Minutes.
+
+| Rung | Result |
+|---|---|
+| Phone browses | ✅ mDNS query for `_airdrop._tcp.local` from the phone's AWDL link-local address |
+| We answer | ✅ `kali-xxxxxx._airdrop._tcp`, SRV `kali.local.:8770`, TXT `flags=10` |
+| TCP | ✅ connection to 8770 established |
+| Listed | ✅ "kali" appeared in the AirDrop row, so `/Discover` was accepted |
+| `/Ask` | ✅ every attempt; the consent prompt showed the request |
+| `/Upload` | ❌ failed, differently in two runs (below) |
+
+**What this settles.** iOS 26.6 does not refuse a non-Apple receiver in Everyone mode. It
+browses for one on AWDL, connects over unicast TCP, and accepts its `/Discover` and
+`/Ask` responses. The feared iOS 16+ lockout does not exist at any layer tested. Unicast
+also works through a card without active monitor mode, though not reliably.
+
+**The `/Ask` from an iPhone**, sanitised:
+
+```
+'<owner>'s iPhone' (iPhone) wants to send:
+  IMG_xxxx.JPG  [public.jpeg]
+  preview: 43,442 bytes, Jpeg2000
+```
+
+`SenderModelName` is `iPhone`, and `FileType` is a proper UTI. The preview is **JPEG 2000**,
+which confirms what opendrop's source suggested. At 43–54 KB it is more than twice the
+size of opendrop's 540 px encode of a flat test image. Its dimensions are unknown, because
+nothing on Windows decodes it, which also means WinDrop's GUI can never show an iPhone's
+preview. It shows the file-type icon instead.
+
+**Run B, a ~60 KB photo: the upload arrived, and our extractor refused it.**
+
+```
+Connection failed: Archive member '.' resolves to the download directory itself.
+```
+
+The body came through TLS, was decompressed and was parsed as cpio. The encoding was not
+logged, so whether our DVZip reader has now met Apple is still unknown. The archive opens
+with a directory member named `.`, the archive root, and the traversal guard rejected it.
+**Fixed:** a root *directory* member is skipped. A file named `.`, and every escaping name,
+is still refused. The receiver now logs the encoding with its first bytes, and each
+archive member, so the next transfer answers the DVZip question.
+
+**Run A, a photo with a 54 KB preview: the connection died before any upload data.**
+
+```
+Connection failed: Connection closed before a chunk header.
+Connection failed: Unable to read data from the transport connection: Connection reset by peer.
+```
+
+tcpdump showed RSTs from the phone after about 60 KB acknowledged (`seq 60601 ack 3189`).
+That fits `/Ask`, preview included, arriving, and the connection dying as `/Upload`
+began. Nothing reached the extractor, so this failure belongs to the transport, not the
+parser.
+
+**The transport.** During both transfers OWL logged bursts of
+`ERROR: unable to inject packet (send: Resource temporarily unavailable)`: `EAGAIN` on
+its injection socket, so frames toward the phone were dropped. Peers churned throughout,
+with repeated add, remove and re-election. The phone's channel sequence favours 44 while
+we are held to 6. Together these make throughput, not protocol correctness, the
+constraint on this hardware.
+
+**Another Apple device in range** advertised `_airdrop._tcp` with TXT `flags=14335`,
+which is `0x37FF`: bits 0–10, 12 and 13. Ours is `0x0A`, DVZip (`0x02`) and MixedTypes
+(`0x08`) in opendrop's mapping. Apple sets every bit opendrop names, plus three it does
+not. iOS listed us with only two bits, so none of the others gates a photo transfer.
+
+### Open questions
+
+1. Which encoding does iOS use for `/Upload` to a receiver advertising DVZip? The next
+   run logs it.
+2. With the root-member fix, does a small photo now land?
+3. Can the `EAGAIN` bursts be reduced (socket send buffer, `txqueuelen`)? At what file
+   size does the transfer give out?
+4. Would advertising more flag bits change what iOS sends?

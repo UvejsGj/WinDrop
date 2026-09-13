@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using WinDrop.Protocol;
+using WinDrop.Protocol.Archive;
 using WinDrop.Protocol.Discovery;
 using WinDrop.Protocol.Http;
 using WinDrop.Protocol.Tls;
@@ -34,13 +35,15 @@ public class AirDropFlowTests : IDisposable
 
     private async Task<Harness> StartAsync(
         Func<AirDropAskRequest, CancellationToken, Task<bool>> consent,
-        AirDropReceiverFlags flags = AirDropReceiverFlags.SupportsDvZip)
+        AirDropReceiverFlags flags = AirDropReceiverFlags.SupportsDvZip,
+        Action<string>? log = null)
     {
         var receiver = new AirDropReceiver(new AirDropReceiverOptions
         {
             DownloadDirectory = _downloadDir,
             ConsentHandler = consent,
             Flags = flags,
+            Log = log,
         });
 
         X509Certificate2 serverCert = AirDropCertificate.CreateSelfSigned("WinDrop-Receiver");
@@ -189,6 +192,34 @@ public class AirDropFlowTests : IDisposable
 
         await h.ServerTask.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(icon, seen);
+    }
+
+    [Theory]
+    [InlineData(AirDropReceiverFlags.SupportsDvZip, "upload: dvzip, first bytes ")]
+    [InlineData(AirDropReceiverFlags.None, "upload: gzip, first bytes 1F8B")]
+    public async Task The_receiver_reports_which_encoding_arrived(AirDropReceiverFlags flags, string expected)
+    {
+        var log = new List<string>();
+        Harness h = await StartAsync((_, _) => Task.FromResult(true), flags, log.Add);
+
+        try
+        {
+            var file = AirDropOutgoingFile.FromPath(WriteTempFile("logged.txt", "which encoding?"));
+
+            Assert.True(await h.Session.AskAsync(new AirDropAskRequest(
+                "Sender PC", "Windows", "id", AirDropAskRequest.FinderBundleId, [file.ToEntry()])));
+
+            await h.Session.UploadAsync([file]);
+        }
+        finally
+        {
+            await h.Shutdown();
+        }
+
+        await h.ServerTask.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.Contains(log, line => line.StartsWith(expected, StringComparison.Ordinal));
+        Assert.Contains("member ./logged.txt (15 bytes)", log);
     }
 
     [Fact]
@@ -352,5 +383,97 @@ public class PathTraversalTests
     public void Names_containing_nul_are_refused()
     {
         Assert.Throws<AirDropHttpException>(() => AirDropReceiver.ResolveSafePath(Root, "ok\0evil.txt"));
+    }
+}
+
+/// <summary>
+/// The archive-root member. iOS 26.6 opens its upload archive with a directory named ".",
+/// and the first real iPhone transfer died on it. The fix has to let that exact shape
+/// through without loosening the traversal guard for anything else.
+/// </summary>
+public class ArchiveRootTests : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), $"windrop-archive-root-{Guid.NewGuid():N}");
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_root, recursive: true); } catch { /* best effort */ }
+        GC.SuppressFinalize(this);
+    }
+
+    private AirDropReceiver Receiver() => new(new AirDropReceiverOptions
+    {
+        DownloadDirectory = _root,
+        ConsentHandler = (_, _) => Task.FromResult(true),
+    });
+
+    private static async Task<MemoryStream> ArchiveAsync(Func<CpioWriter, Task> build)
+    {
+        var output = new MemoryStream();
+        var writer = new CpioWriter(output);
+        await build(writer);
+        await writer.CompleteAsync();
+        output.Position = 0;
+        return output;
+    }
+
+    [Theory]
+    [InlineData(".")]
+    [InlineData("./")]
+    [InlineData("./.")]
+    public async Task A_root_directory_member_is_skipped_and_the_file_after_it_extracted(string rootName)
+    {
+        MemoryStream archive = await ArchiveAsync(async writer =>
+        {
+            await writer.WriteDirectoryAsync(rootName);
+            await writer.WriteFileAsync("./IMG_2350.JPG", "jpeg bytes"u8.ToArray());
+        });
+
+        AirDropTransferResult result = await Receiver().ExtractAsync(archive, default);
+
+        string expected = Path.Combine(_root, "IMG_2350.JPG");
+        Assert.Equal(expected, Assert.Single(result.Files));
+        Assert.Equal("jpeg bytes", await File.ReadAllTextAsync(expected));
+    }
+
+    [Fact]
+    public async Task A_file_claiming_to_be_the_root_is_still_refused()
+    {
+        MemoryStream archive = await ArchiveAsync(writer => writer.WriteFileAsync(".", "not a directory"u8.ToArray()));
+
+        await Assert.ThrowsAsync<AirDropHttpException>(() => Receiver().ExtractAsync(archive, default));
+    }
+
+    [Theory]
+    [InlineData("..")]
+    [InlineData("./..")]
+    [InlineData("/")]
+    [InlineData("../elsewhere")]
+    public async Task Escaping_directory_members_are_still_refused(string name)
+    {
+        MemoryStream archive = await ArchiveAsync(writer => writer.WriteDirectoryAsync(name));
+
+        await Assert.ThrowsAsync<AirDropHttpException>(() => Receiver().ExtractAsync(archive, default));
+    }
+
+    [Theory]
+    [InlineData(".", true)]
+    [InlineData("./", true)]
+    [InlineData("./.", true)]
+    [InlineData(".\\", true)]
+    [InlineData("", true)]
+    [InlineData("/", false)]
+    [InlineData("..", false)]
+    [InlineData("./photo.jpg", false)]
+    [InlineData(".hidden", false)]
+    public void Archive_root_detection(string name, bool isRoot)
+    {
+        Assert.Equal(isRoot, AirDropReceiver.IsArchiveRoot(name));
+    }
+
+    [Fact]
+    public void Logged_names_cannot_carry_terminal_escapes()
+    {
+        Assert.Equal("a?[2Jb.txt", AirDropReceiver.Printable("a[2Jb.txt"));
     }
 }

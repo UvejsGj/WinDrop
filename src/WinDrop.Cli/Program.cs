@@ -77,6 +77,7 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
         DownloadDirectory = directory,
         Flags = flags,
         ConsentHandler = autoAccept ? AutoAcceptAsync : PromptAsync,
+        Log = line => Console.WriteLine($"  {line}"),
     });
 
     await using IAirDropTransport transport = CreateTransport(args);

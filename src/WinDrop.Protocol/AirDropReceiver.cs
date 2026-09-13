@@ -20,6 +20,15 @@ public sealed class AirDropReceiverOptions
     /// </summary>
     public required Func<AirDropAskRequest, CancellationToken, Task<bool>> ConsentHandler { get; init; }
 
+    /// <summary>
+    /// Receives one line per notable step of an upload: which encoding arrived, with its
+    /// first bytes, and each archive member. Optional; the protocol behaves the same
+    /// without it. It exists because some facts can only be observed during a real
+    /// device's transfer. The first iPhone upload failed before anyone could tell which
+    /// encoding it had used.
+    /// </summary>
+    public Action<string>? Log { get; init; }
+
     public long MaxUploadBytes { get; init; } = 8L * 1024 * 1024 * 1024;
     public int MaxAskBodyBytes { get; init; } = 1024 * 1024;
 }
@@ -156,6 +165,11 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
             && prefix[0] == (byte)'0' && prefix[1] == (byte)'7' && prefix[2] == (byte)'0'
             && prefix[3] == (byte)'7' && prefix[4] == (byte)'0' && prefix[5] == (byte)'1';
 
+        // The first bytes settle the question beyond the classification. DVZip should show
+        // a four-byte block length followed by a zlib header (78 xx).
+        options.Log?.Invoke(
+            $"upload: {(isRawCpio ? "raw cpio" : isGzip ? "gzip" : "dvzip")}, first bytes {Convert.ToHexString(prefix, 0, sniffed)}");
+
         var archive = new MemoryStream();
 
         if (isRawCpio)
@@ -165,6 +179,12 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
         archive.Position = 0;
 
+        return await ExtractAsync(archive, ct);
+    }
+
+    /// <summary>Unpacks a decompressed cpio archive into the download directory.</summary>
+    internal async Task<AirDropTransferResult> ExtractAsync(Stream archive, CancellationToken ct)
+    {
         Directory.CreateDirectory(options.DownloadDirectory);
 
         var reader = new CpioReader(archive);
@@ -173,6 +193,18 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
         while (await reader.ReadNextAsync(ct) is { } entry)
         {
+            options.Log?.Invoke(entry.IsDirectory
+                ? $"member {Printable(entry.Name)} (directory)"
+                : $"member {Printable(entry.Name)} ({entry.Size:N0} bytes)");
+
+            // iOS 26.6 opens its upload archive with a directory member named ".": the root
+            // the archive was built from (observed 2026-09-13). That is the download
+            // directory itself, so there is nothing to create. Refusing it, as the first
+            // real upload did, failed every transfer from an iPhone. Only a *directory*
+            // gets this pass. A file claiming to be the root still reaches ResolveSafePath
+            // and is refused there, which is the guard doing its job.
+            if (entry.IsDirectory && IsArchiveRoot(entry.Name)) continue;
+
             string destination = ResolveSafePath(options.DownloadDirectory, entry.Name);
 
             if (entry.IsDirectory)
@@ -192,6 +224,30 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
         return new AirDropTransferResult(written, total);
     }
+
+    /// <summary>
+    /// True for a member that names the archive root: ".", "./", "./.", and the like. An
+    /// absolute "/" is not the root in this sense. It is an absolute path, and it is left
+    /// for ResolveSafePath to refuse.
+    /// </summary>
+    internal static bool IsArchiveRoot(string name)
+    {
+        string relative = name.Replace('\\', '/');
+        if (relative.StartsWith('/')) return false;
+
+        while (relative.StartsWith("./", StringComparison.Ordinal))
+            relative = relative[2..];
+
+        return relative.TrimEnd('/') is "" or ".";
+    }
+
+    /// <summary>
+    /// Member names come from an unauthenticated peer and end up in a terminal. Control
+    /// characters are replaced, so a name cannot carry escape sequences to whoever reads
+    /// the log.
+    /// </summary>
+    internal static string Printable(string text) =>
+        new(text.Select(c => char.IsControl(c) ? '?' : c).ToArray());
 
     /// <summary>
     /// Maps an archive member name onto a path inside the download directory, refusing

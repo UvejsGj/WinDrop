@@ -88,7 +88,7 @@ public static class FileIconCodec
             PreviewImageFormat.Jpeg => new JpegBitmapDecoder(stream, options, BitmapCacheOption.None),
             PreviewImageFormat.Png => new PngBitmapDecoder(stream, options, BitmapCacheOption.None),
 
-            // JPEG 2000 — what opendrop sends — is declined here rather than attempted.
+            // JPEG 2000, which both opendrop and iOS send, is declined here rather than attempted.
             // Windows has no decoder for it, so the caller shows the type icon instead.
             _ => null,
         };
