@@ -23,13 +23,14 @@ public sealed class DvZipFormatException(string message) : Exception(message);
 /// across several blocks. That first block also shows blocks are not a fixed size, since
 /// 45 compressed bytes can only be the archive's opening cpio header.
 ///
-/// STORED BLOCKS, which is a reading, not a confirmation. A larger iPhone upload carried
-/// the header 0x80020000. Without bit 31 that is 0x20000, exactly 128 KiB, and the file
-/// was a JPEG, whose image data deflate cannot shrink. So bit 31 is read as marking a
-/// block stored raw, because compressing it would have made it bigger. The obvious
-/// alternative, "more blocks follow", is refused by the upload above: its first block
-/// was followed by more, yet had bit 31 clear. The first stored block's leading bytes are
-/// logged, so the next real transfer either bears this out or shows what the block holds.
+/// STORED BLOCKS, CONFIRMED (2026-09-14). Bit 31 of a block header marks a block stored
+/// raw, without compression. The reading came from a failed upload whose header was
+/// 0x80020000: 0x20000 is exactly 128 KiB, and the file was a JPEG, whose image data
+/// deflate cannot shrink. It was confirmed by a 1.79 MB PNG that arrived intact across 12
+/// zlib and 3 stored blocks. The first stored block began 54 C3, not a zlib header. A
+/// stored block of 0x80001000 (4 KiB) in another upload shows the flag marks a block's
+/// type, not a fixed chunk size. "More blocks follow" was ruled out before any of this:
+/// an upload's first block was followed by more, yet had bit 31 clear.
 ///
 /// A peer that does not advertise the DVZip capability bit gets plain gzip instead; see
 /// <see cref="AirDropCompression"/>.
@@ -96,9 +97,9 @@ public static class DvZip
 
             if (isStored)
             {
-                // Only the first is described; a large file can hold dozens. If the reading
-                // is wrong, these bytes are where it shows: raw file data supports it, and
-                // a zlib header (78 xx) here would refute it.
+                // Only the first is described; a large file can hold dozens. Its leading
+                // bytes are what confirmed the stored reading, and they stay in the log as a
+                // cheap check that a future iOS has not changed what the flag means.
                 if (++stored == 1)
                 {
                     log?.Invoke(

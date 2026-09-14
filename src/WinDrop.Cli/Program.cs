@@ -77,7 +77,9 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
         DownloadDirectory = directory,
         Flags = flags,
         ConsentHandler = autoAccept ? AutoAcceptAsync : PromptAsync,
-        Log = line => Console.WriteLine($"  {line}"),
+        // Timestamped so a transfer's duration can be read straight off the log: from
+        // "request POST /Upload" to "upload complete".
+        Log = line => Console.WriteLine($"  {DateTime.Now:HH:mm:ss} {line}"),
     });
 
     await using IAirDropTransport transport = CreateTransport(args);
@@ -135,6 +137,13 @@ static Task<bool> AutoAcceptAsync(AirDropAskRequest request, CancellationToken c
     // removes the consent prompt, which is the protocol's only real security
     // boundary, so it says so loudly rather than accepting in silence.
     Console.WriteLine($"Auto-accepting {request.Files.Count} file(s) from '{request.SenderComputerName}' (--yes)");
+
+    // Listed in full even with no prompt. Types and names are evidence too: a HEIC sent
+    // unconverted in one share and converted to JPEG in another went unrecorded because
+    // this mode used to print only a count.
+    foreach (AirDropFileEntry file in request.Files)
+        Console.WriteLine($"  {file.FileName}  [{file.FileType}]");
+
     DescribePreview(request);
     return Task.FromResult(true);
 }
@@ -145,6 +154,8 @@ static void DescribePreview(AirDropAskRequest request)
     // a stranger's bytes from a console tool that has nothing to show them on.
     if (request.FileIcon is { } icon)
         Console.WriteLine($"  preview: {icon.Length:N0} bytes, {PreviewImage.Sniff(icon)}");
+
+    Console.WriteLine($"  convert media formats: {(request.ConvertMediaFormats ? "yes" : "no")}");
 }
 
 static Task<bool> PromptAsync(AirDropAskRequest request, CancellationToken ct)

@@ -63,10 +63,16 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
             // Compare on the path only; a peer may append a query string.
             string path = head.Target.Split('?', 2)[0].TrimEnd('/');
 
+            // Logged as it arrives, not when the connection ends. A peer can keep the
+            // connection open after a transfer, and a CLI that reports only at close then
+            // looks idle while requests are still coming in.
+            options.Log?.Invoke($"request {Printable(head.Method)} {Printable(path)} ({DescribeBody(head.Headers)})");
+
             switch (path)
             {
                 case "/Discover":
                     await connection.ReadBodyAsync(head.Headers, options.MaxAskBodyBytes, ct);
+                    options.Log?.Invoke("-> 200");
                     await RespondPlistAsync(connection, 200, "OK",
                         new AirDropReceiverIdentity(options.ComputerName, options.ModelName).ToPlist(), ct);
                     break;
@@ -84,6 +90,7 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
                     {
                         state = State.Accepted;
                         accepted = request;
+                        options.Log?.Invoke("-> 200 accepted");
 
                         await RespondPlistAsync(connection, 200, "OK",
                             new AirDropReceiverIdentity(options.ComputerName, options.ModelName).ToPlist(), ct);
@@ -94,6 +101,7 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
                         // and retry" here; it means the human said no.
                         state = State.Fresh;
                         accepted = null;
+                        options.Log?.Invoke("-> 401 declined");
                         await connection.WriteResponseAsync(401, "Unauthorized", new HttpHeaders(), ReadOnlyMemory<byte>.Empty, ct);
                     }
 
@@ -104,6 +112,12 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
                 {
                     if (state != State.Accepted || accepted is null)
                     {
+                        // Named apart from a plain missing /Ask because it is an open question
+                        // whether iOS sends a multi-item share as several uploads after one
+                        // /Ask. If it does, this refusal is the bug, and the log should say so.
+                        options.Log?.Invoke(state == State.Completed
+                            ? "-> 401: a second /Upload on this connection, after one already completed"
+                            : "-> 401: /Upload without an accepted /Ask on this connection");
                         // Drain so the connection stays framed, then refuse.
                         await using (Stream ignored = connection.OpenBody(head.Headers))
                             await ignored.CopyToAsync(Stream.Null, ct);
@@ -114,6 +128,7 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
                     result = await ReceiveUploadAsync(connection, head.Headers, ct);
                     state = State.Completed;
+                    options.Log?.Invoke($"upload complete: {result.Files.Count} file(s), {result.TotalBytes:N0} bytes -> 200");
 
                     await connection.WriteResponseAsync(200, "OK", new HttpHeaders(), ReadOnlyMemory<byte>.Empty, ct);
                     break;
@@ -121,11 +136,13 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
                 default:
                     await connection.ReadBodyAsync(head.Headers, options.MaxAskBodyBytes, ct);
+                    options.Log?.Invoke("-> 404");
                     await connection.WriteResponseAsync(404, "Not Found", new HttpHeaders(), ReadOnlyMemory<byte>.Empty, ct);
                     break;
             }
         }
 
+        options.Log?.Invoke("connection closed by peer");
         return result;
     }
 
@@ -248,6 +265,11 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
     /// </summary>
     internal static string Printable(string text) =>
         new(text.Select(c => char.IsControl(c) ? '?' : c).ToArray());
+
+    private static string DescribeBody(HttpHeaders headers) =>
+        headers.IsChunked ? "chunked"
+        : headers.ContentLength is { } length ? $"{length:N0} bytes"
+        : "no body";
 
     /// <summary>
     /// Maps an archive member name onto a path inside the download directory, refusing

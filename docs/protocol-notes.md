@@ -730,3 +730,78 @@ receiver after it, every time.
 2. With that fix, does a 1–3 MB photo complete, and at what size does transfer give out?
 3. Do the "Declined" results persist with `--yes`?
 4. Do `wmem_default` or `txqueuelen` change the `EAGAIN` rate?
+
+#### 2026-09-14 — OBSERVED: stored blocks confirmed; 1.79 MB lands, video does not
+
+Receiver at `b1c99b0`, run with `--yes`, started after OWL, with the phone touching the PC.
+
+**Test A, a 1.79 MB PNG: success in about 1–2 minutes (roughly 15–25 KB/s).**
+
+```
+  preview: 29,641 bytes, Jpeg2000
+  upload: dvzip, first bytes 0001E3DE789C
+  dvzip: block 13 is stored (header 0x80020000), starts 54C38ADF2E2E2E59
+  dvzip: 15 block(s), 12 zlib, 3 stored
+  member . (directory)
+  member ./IMG_xxxx.PNG (1,793,230 bytes)
+```
+
+The 1,793,230-byte file opened intact. **The stored-block reading is confirmed.** Block 13
+begins `54 C3`, not a zlib header, and the archive decoded correctly. That fits the
+content: PNG image data is already deflate-compressed, which makes it exactly the kind of
+block a sender would store rather than recompress.
+
+**Test C, three items in one share: one arrived, then nothing.**
+
+```
+  preview: 68,940 bytes, Jpeg2000
+  upload: dvzip, first bytes 0001E895789C
+  dvzip: block 12 is stored (header 0x80001000), starts 33ACDE15FE7A534B
+  dvzip: 12 block(s), 11 zlib, 1 stored
+  member . (directory)
+  member ./FullSizeRender.heic (1,445,596 bytes)
+```
+
+- **A 4 KiB stored block (`0x80001000`).** Stored blocks are not a fixed 128 KiB, so bit 31
+  is a type flag and not a chunk-size marker.
+- **The order of these lines matters.** The receiver decompresses the whole upload body
+  into memory before extracting anything, and prints the `dvzip:` summary only once the
+  body has ended cleanly. So iOS had already *finished* this `/Upload` body before either
+  `member` line appeared, and that body held the first item and not the other two. The
+  session read the stall as a transfer that "stopped before it resolved". But the CLI
+  prints `Received …` only when the connection closes, so a connection left open looks
+  exactly like that.
+- **Two explanations remain.** Either iOS sends each item of a share as its own `/Upload`,
+  or it ended the transfer early. If it is the first, the receiver is at fault: it accepts
+  exactly one `/Upload` per accepted `/Ask`, and would have answered a second with **401**.
+  That rule was not changed on a guess. The receiver now logs every request and its answer
+  as they happen, and names a refused second upload explicitly, so the next multi-item
+  share settles it.
+- **HEIC arrived unconverted.** In session 3 the same phone converted a HEIC to JPEG under a
+  UUID name; here it sent `FullSizeRender.heic` as HEIC. What decides this is open.
+  `--yes` mode printed only a file count, which hid each item's type and the `/Ask`'s
+  `ConvertMediaFormats`. It now prints both.
+
+**Test B, a short video (about 5–20 MB): failed, with nothing delivered.** `/Ask` was
+accepted (43,331-byte preview). After that there was no `upload:` line in over ten
+minutes, only repeated read and write resets, while the phone showed "Sending". Injection
+errors rose from about 330 to 3,692 during the attempt, an order of magnitude more than
+the successful transfer produced. At 15–25 KB/s, 10 MB needs 7–11 minutes of unbroken
+link, and the overlap on channel 6 does not provide that. The receiver cannot help: the
+iPhone is the sender, and its retry behaviour is not ours to change. The levers are link
+quality and speed.
+
+**`--yes` removed the "Declined" results entirely.** Every transfer was accepted without a
+decline, which supports `/Ask` timing out while a person types. A GUI consent prompt faces
+the same clock, so the timeout is worth measuring before the prompt is designed around it.
+
+**Not run:** the `wmem` and `txqueuelen` experiments. **Not bracketed:** where between
+1.8 MB and 5 MB a single file stops arriving.
+
+### Open questions
+
+1. Does iOS send a multi-item share as one archive, or as several `/Upload` requests?
+2. What decides whether iOS converts HEIC, and does `ConvertMediaFormats` predict it?
+3. Where between 1.8 MB and 5 MB does a single file stop arriving?
+4. Do `wmem_default` or `txqueuelen` change transfer time or the `EAGAIN` rate?
+5. How long does iOS wait for an answer to `/Ask`?

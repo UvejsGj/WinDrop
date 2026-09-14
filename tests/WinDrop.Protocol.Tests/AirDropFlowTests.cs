@@ -223,6 +223,70 @@ public class AirDropFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task Each_request_and_its_answer_is_logged_as_it_happens()
+    {
+        var log = new List<string>();
+        Harness h = await StartAsync((_, _) => Task.FromResult(true), log: log.Add);
+
+        try
+        {
+            await h.Session.DiscoverAsync();
+
+            var file = AirDropOutgoingFile.FromPath(WriteTempFile("traced.txt", "trace me"));
+
+            Assert.True(await h.Session.AskAsync(new AirDropAskRequest(
+                "Sender PC", "Windows", "id", AirDropAskRequest.FinderBundleId, [file.ToEntry()])));
+
+            await h.Session.UploadAsync([file]);
+        }
+        finally
+        {
+            await h.Shutdown();
+        }
+
+        await h.ServerTask.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.Contains(log, line => line.StartsWith("request POST /Discover (", StringComparison.Ordinal));
+        Assert.Contains(log, line => line.StartsWith("request POST /Ask (", StringComparison.Ordinal) && line.EndsWith(" bytes)"));
+        Assert.Contains("-> 200 accepted", log);
+        Assert.Contains("request POST /Upload (chunked)", log);
+        Assert.Contains("upload complete: 1 file(s), 8 bytes -> 200", log);
+        Assert.Equal("connection closed by peer", log[^1]);
+    }
+
+    [Fact]
+    public async Task A_second_upload_after_one_completed_is_refused_and_named_in_the_log()
+    {
+        // Pins today's rule: one /Upload per accepted /Ask on a connection. Whether iOS
+        // sends a multi-item share as several uploads is still open. If it does, this is
+        // the test to change, and the log line is how the field test will show it.
+        var log = new List<string>();
+        Harness h = await StartAsync((_, _) => Task.FromResult(true), log: log.Add);
+
+        try
+        {
+            var first = AirDropOutgoingFile.FromPath(WriteTempFile("first.txt", "one"));
+            var second = AirDropOutgoingFile.FromPath(WriteTempFile("second.txt", "two"));
+
+            Assert.True(await h.Session.AskAsync(new AirDropAskRequest(
+                "Sender PC", "Windows", "id", AirDropAskRequest.FinderBundleId,
+                [first.ToEntry(), second.ToEntry()])));
+
+            await h.Session.UploadAsync([first]);
+            await Assert.ThrowsAsync<AirDropHttpException>(() => h.Session.UploadAsync([second]));
+        }
+        finally
+        {
+            await h.Shutdown();
+        }
+
+        await h.ServerTask.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.Contains("-> 401: a second /Upload on this connection, after one already completed", log);
+        Assert.False(File.Exists(Path.Combine(_downloadDir, "second.txt")));
+    }
+
+    [Fact]
     public async Task Upload_without_a_preceding_ask_is_refused_by_the_receiver()
     {
         // The property that makes consent meaningful. Driven with a raw connection so
