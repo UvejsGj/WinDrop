@@ -805,3 +805,74 @@ the same clock, so the timeout is worth measuring before the prompt is designed 
 3. Where between 1.8 MB and 5 MB does a single file stop arriving?
 4. Do `wmem_default` or `txqueuelen` change transfer time or the `EAGAIN` rate?
 5. How long does iOS wait for an answer to `/Ask`?
+
+#### 2026-09-16 — OBSERVED: one /Upload for many files; EAGAIN exonerated; bigger buffers are worse
+
+Session 5, receiver at `dbe6120`, run with `--yes`, OWL on channel 6. The phone was on
+iOS 26.6; it has since updated to iOS 27, so everything here is 26.6.
+
+**A multi-item share is one archive.** Three PNGs, 5,717,820 bytes:
+
+```
+08:08:49 request POST /Upload (chunked)
+08:11:13 dvzip: 44 block(s), 23 zlib, 21 stored
+08:11:13 member ./IMG_xxxx.PNG (2,029,799 bytes)
+08:11:13 member ./IMG_xxxx.PNG (2,228,664 bytes)
+08:11:13 member ./IMG_xxxx.PNG (1,459,357 bytes)
+08:11:13 upload complete: 3 file(s), 5,717,820 bytes -> 200
+```
+
+One `/Ask` listing N files, one `/Upload` carrying one cpio archive with all N members. No
+second `/Upload` arrived and the 401 branch never fired, so the receiver's
+one-upload-per-`/Ask` rule matches what iOS does. The test pinning it stays, now as a
+guard against a peer appending an upload nobody agreed to.
+
+**Session 4's size ceiling does not exist.** 5.7 MB arrived intact in 144 s, about
+40 KB/s, roughly twice the rate of the single 1.8 MB file. Whatever stops a video, it is
+not size.
+
+**Identical names lose files, on the phone's side.** A share of three *edited* photos
+produced an `/Ask` listing three files all named `FullSizeRender.heic`, and an upload
+whose archive held a single member of 1,439,753 bytes across 12 blocks: one file's worth
+of data. The loss therefore happened before the archive was built, not in our extractor.
+Ours would have overwritten silently all the same, so a collision now becomes
+`name (2).ext` and is logged.
+
+**EAGAIN is not a failure predictor.** 20,857 injection errors over 25 minutes, with the
+5.7 MB transfer succeeding inside that window. Session 4 saw about 330 during a success
+and 3,692 during a failure. OWL retries and the data gets through. Three sessions treated
+this as the prime suspect; it is not one.
+
+**Bigger socket buffers made it slower.** The same three PNGs took 144 s at default
+buffers and 266 s with `net.core.wmem_default` and `wmem_max` at 4 MB, about 85% worse.
+Offered mechanism: a deeper send queue holds more frames than the channel-6 windows can
+drain, so loss is noticed later and retried later. Caveats: one run per configuration on a
+drifting link, and the 4 MB run needed three attempts. Keep the direction, not the number.
+`txqueuelen` was deliberately skipped rather than stacked on top of a change already
+pointing the wrong way. The experiment worth running is the opposite: buffers *below*
+default.
+
+**`/Ask` takes 8 seconds to answer, and that is the real flakiness.** Three exchanges took
+8 s each (08:08:38 to 46, 08:20:21 to 29, 08:20:50 to 58). The first went on to upload;
+the phone abandoned the other two. Identical latency, different outcomes, which puts us
+right on iOS's patience threshold. It is not the consent prompt: `--yes` was on
+throughout. It explains the "fails on the first tap, works on the second" pattern from
+earlier sessions.
+
+Where those 8 s go is now measured rather than guessed: the receiver times the `/Ask` body
+read, the consent decision and the reply separately. The body is the suspect, since iOS
+attaches a JPEG 2000 preview of 43 to 69 KB to every `/Ask`, and at early-connection rates
+that alone is seconds. If that is where the time goes, no change to our code helps; the
+lever is a TXT record that asks iOS for less, which `receive --flags <hex>` now makes
+testable.
+
+### Open questions
+
+1. How much of the 8 s is reading the preview? Instrumented; the next session reads it off
+   the log.
+2. Does advertising different flags change whether iOS attaches a preview, or its size?
+3. Do socket buffers *below* default beat 144 s for 5.7 MB?
+4. Why did three edited photos collapse into one archive member on the phone?
+5. What blocks video: duration, codec, or iOS's own transcode path?
+6. What does iOS 27 change? It is reported to make AirDrop up to 80% faster with no new
+   restrictions, and every observation above predates it.

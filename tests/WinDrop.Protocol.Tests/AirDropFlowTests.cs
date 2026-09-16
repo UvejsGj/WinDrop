@@ -248,7 +248,8 @@ public class AirDropFlowTests : IDisposable
 
         Assert.Contains(log, line => line.StartsWith("request POST /Discover (", StringComparison.Ordinal));
         Assert.Contains(log, line => line.StartsWith("request POST /Ask (", StringComparison.Ordinal) && line.EndsWith(" bytes)"));
-        Assert.Contains("-> 200 accepted", log);
+        Assert.Contains(log, line => line.StartsWith("/Ask body: ", StringComparison.Ordinal));
+        Assert.Contains(log, line => line.StartsWith("-> 200 accepted (body ", StringComparison.Ordinal));
         Assert.Contains("request POST /Upload (chunked)", log);
         Assert.Contains("upload complete: 1 file(s), 8 bytes -> 200", log);
         Assert.Equal("connection closed by peer", log[^1]);
@@ -465,10 +466,11 @@ public class ArchiveRootTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private AirDropReceiver Receiver() => new(new AirDropReceiverOptions
+    private AirDropReceiver Receiver(List<string>? log = null) => new(new AirDropReceiverOptions
     {
         DownloadDirectory = _root,
         ConsentHandler = (_, _) => Task.FromResult(true),
+        Log = log is null ? null : new Action<string>(log.Add),
     });
 
     private static async Task<MemoryStream> ArchiveAsync(Func<CpioWriter, Task> build)
@@ -493,7 +495,7 @@ public class ArchiveRootTests : IDisposable
             await writer.WriteFileAsync("./IMG_2350.JPG", "jpeg bytes"u8.ToArray());
         });
 
-        AirDropTransferResult result = await Receiver().ExtractAsync(archive, default);
+        AirDropTransferResult result = await Receiver().ExtractAsync(archive, null, default);
 
         string expected = Path.Combine(_root, "IMG_2350.JPG");
         Assert.Equal(expected, Assert.Single(result.Files));
@@ -505,7 +507,7 @@ public class ArchiveRootTests : IDisposable
     {
         MemoryStream archive = await ArchiveAsync(writer => writer.WriteFileAsync(".", "not a directory"u8.ToArray()));
 
-        await Assert.ThrowsAsync<AirDropHttpException>(() => Receiver().ExtractAsync(archive, default));
+        await Assert.ThrowsAsync<AirDropHttpException>(() => Receiver().ExtractAsync(archive, null, default));
     }
 
     [Theory]
@@ -517,7 +519,7 @@ public class ArchiveRootTests : IDisposable
     {
         MemoryStream archive = await ArchiveAsync(writer => writer.WriteDirectoryAsync(name));
 
-        await Assert.ThrowsAsync<AirDropHttpException>(() => Receiver().ExtractAsync(archive, default));
+        await Assert.ThrowsAsync<AirDropHttpException>(() => Receiver().ExtractAsync(archive, null, default));
     }
 
     [Theory]
@@ -539,5 +541,51 @@ public class ArchiveRootTests : IDisposable
     public void Logged_names_cannot_carry_terminal_escapes()
     {
         Assert.Equal("a?[2Jb.txt", AirDropReceiver.Printable("a[2Jb.txt"));
+    }
+
+    [Fact]
+    public async Task Members_with_the_same_name_are_all_kept()
+    {
+        // iOS names every edited photo FullSizeRender.heic, so a share of three can carry
+        // three members under one name. Overwriting would deliver one file in silence.
+        MemoryStream archive = await ArchiveAsync(async writer =>
+        {
+            await writer.WriteDirectoryAsync(".");
+            await writer.WriteFileAsync("./FullSizeRender.heic", "first"u8.ToArray());
+            await writer.WriteFileAsync("./FullSizeRender.heic", "second"u8.ToArray());
+            await writer.WriteFileAsync("./FullSizeRender.heic", "third"u8.ToArray());
+        });
+
+        var log = new List<string>();
+        AirDropTransferResult result = await Receiver(log).ExtractAsync(archive, null, default);
+
+        Assert.Equal(3, result.Files.Count);
+        Assert.Equal("first", await File.ReadAllTextAsync(Path.Combine(_root, "FullSizeRender.heic")));
+        Assert.Equal("second", await File.ReadAllTextAsync(Path.Combine(_root, "FullSizeRender (2).heic")));
+        Assert.Equal("third", await File.ReadAllTextAsync(Path.Combine(_root, "FullSizeRender (3).heic")));
+        Assert.Contains(log, line => line.Contains("saved as FullSizeRender (2).heic"));
+    }
+
+    [Fact]
+    public async Task A_member_outside_the_accepted_list_is_reported_but_still_written()
+    {
+        // Apple's own archives carry members that are not in the /Ask list, so this is a
+        // report rather than a refusal. It is still worth saying out loud.
+        var consented = new AirDropAskRequest("Phone", "iPhone", "id", AirDropAskRequest.FinderBundleId,
+            [AirDropFileEntry.ForFile("wanted.txt")]);
+
+        MemoryStream archive = await ArchiveAsync(async writer =>
+        {
+            await writer.WriteDirectoryAsync(".");
+            await writer.WriteFileAsync("./wanted.txt", "asked for"u8.ToArray());
+            await writer.WriteFileAsync("./extra.txt", "never mentioned"u8.ToArray());
+        });
+
+        var log = new List<string>();
+        AirDropTransferResult result = await Receiver(log).ExtractAsync(archive, consented, default);
+
+        Assert.Equal(2, result.Files.Count);
+        Assert.Contains("member ./extra.txt was not in the accepted /Ask list", log);
+        Assert.DoesNotContain(log, line => line.Contains("./wanted.txt was not in"));
     }
 }

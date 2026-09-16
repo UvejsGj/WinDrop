@@ -17,6 +17,12 @@ import plistlib
 import sys
 from pathlib import Path
 
+# Windows gives a redirected stdout the ANSI code page, and this script prints non-ASCII
+# on purpose: surviving it is part of what the codec is being checked for. Without this,
+# the oracle dies in cp1252 on "Përshëndetje 世界" and the failure looks like a codec bug.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 
 # A realistic AirDrop /Ask body. Doubles as documentation of the payload shape we
 # will need in milestone 4, kept here so the codec is exercised on the real thing

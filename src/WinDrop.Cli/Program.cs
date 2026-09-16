@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using WinDrop.Protocol;
@@ -44,7 +45,7 @@ static int PrintUsage()
     Console.WriteLine("""
         WinDrop - an AirDrop implementation for Windows
 
-          windrop receive [--dir <path>] [--port <n>] [--yes]   advertise and accept transfers
+          windrop receive [--dir <path>] [--port <n>] [--flags <hex>] [--yes]
           windrop send [--to <name>| --peer <host>] [--icon <image>] <file> [file...]
           windrop browse                   list nearby peers
 
@@ -69,7 +70,24 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
 
     Directory.CreateDirectory(directory);
 
+    // --flags overrides what the TXT record advertises, so a session can test what iOS does
+    // in response: whether it still attaches a preview, and whether it picks DVZip or gzip.
     var flags = AirDropReceiverFlags.SupportsDvZip | AirDropReceiverFlags.SupportsMixedTypes;
+
+    if (ArgumentValue(args, "--flags") is { } flagText)
+    {
+        string digits = flagText.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? flagText[2..] : flagText;
+
+        if (!int.TryParse(digits, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int parsed))
+        {
+            Console.Error.WriteLine($"--flags takes hex, such as 0x0A or 0. Got '{flagText}'.");
+            return 1;
+        }
+
+        flags = (AirDropReceiverFlags)parsed;
+    }
+
+    Console.WriteLine($"Advertising flags 0x{(int)flags:X2} ({flags})");
 
     var receiver = new AirDropReceiver(new AirDropReceiverOptions
     {

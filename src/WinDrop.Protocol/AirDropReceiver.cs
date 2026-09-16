@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using WinDrop.Protocol.Archive;
 using WinDrop.Protocol.Compression;
 using WinDrop.Protocol.Discovery;
@@ -79,21 +80,39 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
                 case "/Ask":
                 {
+                    // Timed because this round trip takes seconds over AWDL and sits right
+                    // on the edge of iOS's patience: an /Ask answered too late shows on the
+                    // phone as a decline. The parts are timed apart so the blame is visible
+                    // — reading the body, which carries the preview image, then the consent
+                    // decision, then writing the reply.
+                    var askTimer = Stopwatch.StartNew();
+
                     byte[] body = await connection.ReadBodyAsync(head.Headers, options.MaxAskBodyBytes, ct);
+                    long bodyMs = askTimer.ElapsedMilliseconds;
+
+                    options.Log?.Invoke($"/Ask body: {body.Length:N0} bytes read in {bodyMs:N0} ms");
 
                     if (BinaryPlistReader.Parse(body) is not IReadOnlyDictionary<string, object?> plist)
                         throw new AirDropHttpException("/Ask body was not a plist dictionary.");
 
                     AirDropAskRequest request = AirDropAskRequest.FromPlist(plist);
 
+                    long consentStart = askTimer.ElapsedMilliseconds;
+
                     if (await options.ConsentHandler(request, ct))
                     {
                         state = State.Accepted;
                         accepted = request;
-                        options.Log?.Invoke("-> 200 accepted");
+
+                        long consentMs = askTimer.ElapsedMilliseconds - consentStart;
 
                         await RespondPlistAsync(connection, 200, "OK",
                             new AirDropReceiverIdentity(options.ComputerName, options.ModelName).ToPlist(), ct);
+
+                        long replyMs = askTimer.ElapsedMilliseconds - consentStart - consentMs;
+
+                        options.Log?.Invoke(
+                            $"-> 200 accepted (body {bodyMs:N0} ms, consent {consentMs:N0} ms, reply {replyMs:N0} ms, total {askTimer.ElapsedMilliseconds:N0} ms)");
                     }
                     else
                     {
@@ -126,7 +145,7 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
                         break;
                     }
 
-                    result = await ReceiveUploadAsync(connection, head.Headers, ct);
+                    result = await ReceiveUploadAsync(connection, head.Headers, accepted, ct);
                     state = State.Completed;
                     options.Log?.Invoke($"upload complete: {result.Files.Count} file(s), {result.TotalBytes:N0} bytes -> 200");
 
@@ -149,6 +168,7 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
     private async Task<AirDropTransferResult> ReceiveUploadAsync(
         HttpConnection connection,
         HttpHeaders headers,
+        AirDropAskRequest? consented,
         CancellationToken ct)
     {
         // The compression is NOT signalled in a header. opendrop sends only
@@ -196,11 +216,14 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
         archive.Position = 0;
 
-        return await ExtractAsync(archive, ct);
+        return await ExtractAsync(archive, consented, ct);
     }
 
     /// <summary>Unpacks a decompressed cpio archive into the download directory.</summary>
-    internal async Task<AirDropTransferResult> ExtractAsync(Stream archive, CancellationToken ct)
+    internal async Task<AirDropTransferResult> ExtractAsync(
+        Stream archive,
+        AirDropAskRequest? consented,
+        CancellationToken ct)
     {
         Directory.CreateDirectory(options.DownloadDirectory);
 
@@ -222,6 +245,13 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
             // and is refused there, which is the guard doing its job.
             if (entry.IsDirectory && IsArchiveRoot(entry.Name)) continue;
 
+            // Consent covers the names listed in /Ask. Apple's own archives also carry
+            // members outside that list, the root skipped above among them, so a mismatch
+            // is reported rather than refused. Reported, though: a person agreeing to
+            // these files is the only thing standing behind writing them.
+            if (consented is not null && !IsConsented(consented, entry.Name))
+                options.Log?.Invoke($"member {Printable(entry.Name)} was not in the accepted /Ask list");
+
             string destination = ResolveSafePath(options.DownloadDirectory, entry.Name);
 
             if (entry.IsDirectory)
@@ -231,6 +261,19 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+
+            // Two members can name the same file: iOS names every edited photo
+            // FullSizeRender.heic. Overwriting would hand over one file where the user
+            // accepted three, and say nothing about it.
+            string free = Unused(destination);
+
+            if (free != destination)
+            {
+                options.Log?.Invoke(
+                    $"member {Printable(entry.Name)} saved as {Path.GetFileName(free)}; that name was taken");
+
+                destination = free;
+            }
 
             byte[] content = await reader.ReadContentAsync(ct);
             await File.WriteAllBytesAsync(destination, content, ct);
@@ -270,6 +313,37 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
         headers.IsChunked ? "chunked"
         : headers.ContentLength is { } length ? $"{length:N0} bytes"
         : "no body";
+
+    /// <summary>Was this member among the files the user accepted?</summary>
+    private static bool IsConsented(AirDropAskRequest request, string memberName)
+    {
+        string normalised = memberName.Replace('\\', '/');
+
+        return request.Files.Any(file =>
+            string.Equals(file.FileBomPath, normalised, StringComparison.Ordinal)
+            || string.Equals(file.FileName, Path.GetFileName(normalised), StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The given path, or the first free "name (n).ext" beside it, so a second member of
+    /// the same name cannot replace the first.
+    /// </summary>
+    private static string Unused(string path)
+    {
+        if (!File.Exists(path)) return path;
+
+        string directory = Path.GetDirectoryName(path)!;
+        string name = Path.GetFileNameWithoutExtension(path);
+        string extension = Path.GetExtension(path);
+
+        for (int n = 2; n < 10_000; n++)
+        {
+            string candidate = Path.Combine(directory, $"{name} ({n}){extension}");
+            if (!File.Exists(candidate)) return candidate;
+        }
+
+        throw new AirDropHttpException($"Too many members named like '{Path.GetFileName(path)}'.");
+    }
 
     /// <summary>
     /// Maps an archive member name onto a path inside the download directory, refusing

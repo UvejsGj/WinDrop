@@ -204,6 +204,21 @@ reported "Declined" twice while a person was still typing `y`, which may be `/As
 timing out. Use `--yes` only while testing: it removes the consent prompt, which is the
 protocol's only real security boundary.
 
+## What sessions 4 and 5 settled about this link
+
+- **Bring OWL up with `tools/owl-session.sh`.** It sets monitor mode and the channel, runs
+  OWL with `-N`, and tees a timestamped log. Retyping the command without `tee` has cost
+  the injection-error count twice.
+- **Injection errors are not a health metric.** 20,857 `unable to inject packet` errors
+  accompanied a successful 5.7 MB transfer. Compare counts per transfer if at all, and
+  never read a large number as the cause of a failure.
+- **Do not raise socket buffers.** `wmem_default = 4194304` made the same 5.7 MB transfer
+  85% slower: 266 s against 144 s. Below-default buffers are the untested direction.
+- **Throughput here:** about 40 KB/s for a 5.7 MB multi-file archive, 15 to 25 KB/s for a
+  single 1.8 MB file. No video has ever arrived.
+- **`/Ask` takes about 8 s to answer over this link,** close to the point where iOS gives
+  up. That, and not the consent prompt, is why a first tap often fails and a second works.
+
 When a second radio is present, use `sudo iw list | grep -i "active monitor"` rather
 than naming `phy0`. It covers every phy, and a dongle will not be `phy0` beside an
 internal card.
