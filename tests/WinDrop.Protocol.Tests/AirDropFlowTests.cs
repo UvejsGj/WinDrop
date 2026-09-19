@@ -36,7 +36,8 @@ public class AirDropFlowTests : IDisposable
     private async Task<Harness> StartAsync(
         Func<AirDropAskRequest, CancellationToken, Task<bool>> consent,
         AirDropReceiverFlags flags = AirDropReceiverFlags.SupportsDvZip,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        bool earlyAsk = false)
     {
         var receiver = new AirDropReceiver(new AirDropReceiverOptions
         {
@@ -44,6 +45,7 @@ public class AirDropFlowTests : IDisposable
             ConsentHandler = consent,
             Flags = flags,
             Log = log,
+            EarlyAskReply = earlyAsk,
         });
 
         X509Certificate2 serverCert = AirDropCertificate.CreateSelfSigned("WinDrop-Receiver");
@@ -220,6 +222,36 @@ public class AirDropFlowTests : IDisposable
 
         Assert.Contains(log, line => line.StartsWith(expected, StringComparison.Ordinal));
         Assert.Contains("member ./logged.txt (15 bytes)", log);
+    }
+
+    [Fact]
+    public async Task Early_ask_reply_still_completes_a_transfer_when_the_sender_ignores_it()
+    {
+        // A sender that writes its whole /Ask body before reading the response — ours, and
+        // the case where iOS does not honour the early reply — must still transfer. This is
+        // the safety net under the experiment: switching it on cannot break a real send.
+        var log = new List<string>();
+        Harness h = await StartAsync((_, _) => Task.FromResult(true), log: log.Add, earlyAsk: true);
+
+        try
+        {
+            var file = AirDropOutgoingFile.FromPath(WriteTempFile("early.txt", "sent under early-ask"));
+
+            Assert.True(await h.Session.AskAsync(new AirDropAskRequest(
+                "Sender PC", "Windows", "id", AirDropAskRequest.FinderBundleId, [file.ToEntry()])));
+
+            await h.Session.UploadAsync([file]);
+        }
+        finally
+        {
+            await h.Shutdown();
+        }
+
+        await h.ServerTask.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.Contains(log, line => line.StartsWith("early-ask: replying 200 before", StringComparison.Ordinal));
+        Assert.Contains(log, line => line.StartsWith("early-ask: full body of ", StringComparison.Ordinal));
+        Assert.Equal("sent under early-ask", await File.ReadAllTextAsync(Path.Combine(_downloadDir, "early.txt")));
     }
 
     [Fact]

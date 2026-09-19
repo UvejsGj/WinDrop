@@ -876,3 +876,71 @@ testable.
 5. What blocks video: duration, codec, or iOS's own transcode path?
 6. What does iOS 27 change? It is reported to make AirDrop up to 80% faster with no new
    restrictions, and every observation above predates it.
+
+#### 2026-09-19 — OBSERVED: the /Ask cost is the preview, and iOS 27 tripled it
+
+Session 6, receiver at `9280671`, phone on **iOS 27.0** (all earlier sessions were 26.6).
+The three-part `/Ask` timing settled where the seconds go:
+
+```
+17:52:21 /Ask body: 131,746 bytes read in 10,522 ms
+  IMG_xxxx.WEBP  [org.webmproject.webp]
+  preview: 127,286 bytes, Jpeg2000
+17:52:21 -> 200 accepted (body 10,522 ms, consent 1 ms, reply 0 ms, total 10,531 ms)
+...
+17:56:23 /Ask body: 201,469 bytes read in 17,269 ms
+  preview: 196,962 bytes, Jpeg2000
+17:56:23 -> 200 accepted (body 17,269 ms, consent 0 ms, reply 0 ms, total 17,270 ms)
+```
+
+Consent and reply are 0–1 ms. The entire `/Ask` cost is receiving the body, and the body is
+~97% preview image (127,286 of 131,746; 196,962 of 201,469). **Our code contributes nothing
+measurable.** Every tap this session was declined by the phone: at 10–19 s we are past its
+patience.
+
+**iOS 27 made it worse, not better.** On 26.6 previews were 30–70 KB and `/Ask` took ~8 s;
+on 27.0 they are 127–215 KB and `/Ask` takes 10–19 s. Whatever iOS 27 speeds up
+Apple-to-Apple, the larger preview is a straight loss on a ~20 KB/s link.
+
+**Capability flags do not control the preview.** With `--flags 0x02` the preview was still
+210,808 bytes (19,491 ms total). With `--flags 0`, `kali` still appeared (mDNS ignores
+flags) and `/Discover` was answered, but iOS never sent an `/Ask` at all — so the flags gate
+the handshake but not the preview size. This matches the protocol: the only receiver-side
+negotiation in `/Discover` is `ReceiverMediaCapabilities`, which governs file-format
+conversion (hence `convert media formats: no` throughout), not the icon. iOS also sent a
+`.WEBP` natively — iOS 27 ships WebP without transcoding.
+
+**Why neither proposed fix works as first framed.**
+
+- *Parse the metadata, reply early, drain the preview.* Impossible with this wire format. A
+  binary plist is unreadable until its final 32-byte trailer, which points to the offset
+  table; the `FileIcon` blob sits in the object region before it. The metadata cannot be
+  reached without first receiving the whole preview, and the bytes cross the slow link
+  whenever we reply.
+- *Ask iOS for no preview.* No protocol expresses it. The sender decides `FileIcon`
+  unilaterally from the file type; there is no receiver key to suppress it.
+
+**The one real lever, now testable.** RFC 9110 lets a client stop uploading a body once it
+sees a final response. If CFNetwork honours that, an early `200` on `/Ask` could make iOS
+abandon the preview mid-upload. `receive --early-ask` (option `EarlyAskReply`) tests it: it
+answers 200 before reading the body, then times what iOS does with the body. A full body
+still arriving in ~10–19 s means iOS ignored it and the bottleneck is the link, full stop; a
+fast or absent body means a real fix exists. It accepts sight-unseen, so it is a measurement
+tool under `--yes`, never the product path. Verified locally that switching it on does not
+break a normal transfer (our sender writes the whole body before reading the reply, the same
+as an iOS that ignores the early 200).
+
+If iOS ignores it, the honest conclusion is that image AirDrop over this card is
+link-bound: the durable fix is transmitting on channel 44 (where the phone spends most of
+its time) rather than channel 6, which needs different hardware or a way past the AX211's
+self-managed 5 GHz rules. Non-image shares, which carry no preview, are unaffected and
+should already be fast.
+
+### Open questions
+
+1. Does iOS stop sending the preview when `--early-ask` replies 200 first? The measurement
+   this session runs.
+2. If it does, what is the smallest change that keeps a real consent prompt — accept, then
+   read the body for display, then let iOS proceed?
+3. What is the 5.7 MB baseline on iOS 27 at default buffers (the 144 s figure was 26.6)?
+4. Do below-default socket buffers beat that baseline?

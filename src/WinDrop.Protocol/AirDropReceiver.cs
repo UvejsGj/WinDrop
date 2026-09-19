@@ -32,6 +32,14 @@ public sealed class AirDropReceiverOptions
 
     public long MaxUploadBytes { get; init; } = 8L * 1024 * 1024 * 1024;
     public int MaxAskBodyBytes { get; init; } = 1024 * 1024;
+
+    /// <summary>
+    /// Experimental, diagnostic only. Answers /Ask with 200 before reading its body, to
+    /// measure whether iOS stops uploading the preview on an early final response. It
+    /// accepts sight-unseen, so it is meaningful only under auto-accept and must never be
+    /// the product path. See <see cref="AirDropReceiver"/>.
+    /// </summary>
+    public bool EarlyAskReply { get; init; }
 }
 
 public sealed record AirDropTransferResult(IReadOnlyList<string> Files, long TotalBytes);
@@ -80,6 +88,12 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
                 case "/Ask":
                 {
+                    if (options.EarlyAskReply)
+                    {
+                        (state, accepted) = await HandleEarlyAskAsync(connection, head.Headers, ct);
+                        break;
+                    }
+
                     // Timed because this round trip takes seconds over AWDL and sits right
                     // on the edge of iOS's patience: an /Ask answered too late shows on the
                     // phone as a decline. The parts are timed apart so the blame is visible
@@ -163,6 +177,65 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
         options.Log?.Invoke("connection closed by peer");
         return result;
+    }
+
+    /// <summary>
+    /// The experiment behind <see cref="AirDropReceiverOptions.EarlyAskReply"/>.
+    ///
+    /// The /Ask body is ~97% preview image and takes 10–19 s to arrive over this link,
+    /// which is the whole of the delay that makes iOS abandon transfers. The body cannot be
+    /// parsed early — a binary plist is unreadable until its trailer, which follows the
+    /// preview — so the only way to skip the preview is to make the *sender* stop sending
+    /// it. RFC 9110 lets a client stop uploading a body once it sees a final response. This
+    /// sends 200 before reading anything, then measures what iOS does with the body:
+    ///
+    ///   * completes in ~10–19 s at full size → iOS ignored the early reply; the bottleneck
+    ///     is the link, and no receiver-side change helps
+    ///   * completes fast and small, or does not complete → iOS reacted; a real fix exists
+    ///
+    /// It accepts before knowing what was sent, so it is a measurement tool, not a design.
+    /// </summary>
+    private async Task<(State, AirDropAskRequest?)> HandleEarlyAskAsync(
+        HttpConnection connection, HttpHeaders headers, CancellationToken ct)
+    {
+        options.Log?.Invoke("early-ask: replying 200 before reading the body (experimental, accepts sight-unseen)");
+
+        await RespondPlistAsync(connection, 200, "OK",
+            new AirDropReceiverIdentity(options.ComputerName, options.ModelName).ToPlist(), ct);
+
+        var timer = Stopwatch.StartNew();
+
+        // If iOS reacts by simply ceasing to write, with no terminating chunk, the body read
+        // would block forever, so the drain is bounded.
+        using var drain = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        drain.CancelAfter(TimeSpan.FromSeconds(30));
+
+        try
+        {
+            byte[] body = await connection.ReadBodyAsync(headers, options.MaxAskBodyBytes, drain.Token);
+
+            options.Log?.Invoke(
+                $"early-ask: full body of {body.Length:N0} bytes still arrived {timer.ElapsedMilliseconds:N0} ms after the early reply");
+
+            if (BinaryPlistReader.Parse(body) is IReadOnlyDictionary<string, object?> plist)
+                return (State.Accepted, AirDropAskRequest.FromPlist(plist));
+        }
+        catch (OperationCanceledException) when (drain.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            options.Log?.Invoke(
+                $"early-ask: no complete body {timer.ElapsedMilliseconds:N0} ms after the early reply — iOS may have stopped sending the preview");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            options.Log?.Invoke(
+                $"early-ask: body read ended after {timer.ElapsedMilliseconds:N0} ms: {ex.Message}");
+        }
+
+        // Truncated, timed out or unparseable: proceed so /Upload can still be observed. The
+        // synthetic request has no files, so every arriving member is reported as unlisted —
+        // which is the honest state, nothing having been read to consent to.
+        return (State.Accepted, new AirDropAskRequest(
+            "unknown (early-ask)", "unknown", "", AirDropAskRequest.FinderBundleId, []));
     }
 
     private async Task<AirDropTransferResult> ReceiveUploadAsync(

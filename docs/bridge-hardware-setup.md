@@ -218,6 +218,14 @@ protocol's only real security boundary.
   single 1.8 MB file. No video has ever arrived.
 - **`/Ask` takes about 8 s to answer over this link,** close to the point where iOS gives
   up. That, and not the consent prompt, is why a first tap often fails and a second works.
+- **Session 6 (iOS 27) pinned it to the preview.** The `/Ask` cost is ~97% the JPEG 2000
+  preview iOS attaches, and iOS 27 tripled that to 127–215 KB, pushing `/Ask` to 10–19 s and
+  declining every tap. Our processing is 1 ms; no advertised flag suppresses the preview.
+  `receive --early-ask` tests whether iOS abandons the preview on an early 200. If it does
+  not, image AirDrop here is link-bound, and the lever is transmitting on channel 44 (where
+  the phone spends most of its time) rather than channel 6 — different hardware, or a way
+  past the AX211's self-managed 5 GHz rules. Non-image shares carry no preview and are
+  unaffected.
 
 When a second radio is present, use `sudo iw list | grep -i "active monitor"` rather
 than naming `phy0`. It covers every phy, and a dongle will not be `phy0` beside an

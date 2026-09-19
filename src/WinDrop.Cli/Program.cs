@@ -45,7 +45,7 @@ static int PrintUsage()
     Console.WriteLine("""
         WinDrop - an AirDrop implementation for Windows
 
-          windrop receive [--dir <path>] [--port <n>] [--flags <hex>] [--yes]
+          windrop receive [--dir <path>] [--port <n>] [--flags <hex>] [--yes] [--early-ask]
           windrop send [--to <name>| --peer <host>] [--icon <image>] <file> [file...]
           windrop browse                   list nearby peers
 
@@ -89,12 +89,20 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
 
     Console.WriteLine($"Advertising flags 0x{(int)flags:X2} ({flags})");
 
+    // Experimental measurement: reply to /Ask before reading its preview-laden body, to see
+    // whether iOS then stops sending the preview. It accepts sight-unseen, so it only makes
+    // sense alongside --yes, and never in real use.
+    bool earlyAsk = args.Contains("--early-ask", StringComparer.OrdinalIgnoreCase);
+    if (earlyAsk)
+        Console.WriteLine("Early-ask experiment ON: /Ask is accepted before its body is read (diagnostic only).");
+
     var receiver = new AirDropReceiver(new AirDropReceiverOptions
     {
         ComputerName = Environment.MachineName,
         DownloadDirectory = directory,
         Flags = flags,
         ConsentHandler = autoAccept ? AutoAcceptAsync : PromptAsync,
+        EarlyAskReply = earlyAsk,
         // Timestamped so a transfer's duration can be read straight off the log: from
         // "request POST /Upload" to "upload complete".
         Log = line => Console.WriteLine($"  {DateTime.Now:HH:mm:ss} {line}"),
