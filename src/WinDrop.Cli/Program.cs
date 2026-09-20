@@ -89,12 +89,12 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
 
     Console.WriteLine($"Advertising flags 0x{(int)flags:X2} ({flags})");
 
-    // Experimental measurement: reply to /Ask before reading its preview-laden body, to see
-    // whether iOS then stops sending the preview. It accepts sight-unseen, so it only makes
-    // sense alongside --yes, and never in real use.
+    // Answers /Ask before reading its preview-laden body, which is what stops iOS timing the
+    // exchange out on a slow link. The prompt then runs while the upload arrives, and files
+    // are written only if it is accepted.
     bool earlyAsk = args.Contains("--early-ask", StringComparer.OrdinalIgnoreCase);
     if (earlyAsk)
-        Console.WriteLine("Early-ask experiment ON: /Ask is accepted before its body is read (diagnostic only).");
+        Console.WriteLine("Early-ask ON: /Ask is answered first; the prompt decides whether the upload is kept.");
 
     var receiver = new AirDropReceiver(new AirDropReceiverOptions
     {

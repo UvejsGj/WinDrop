@@ -249,9 +249,41 @@ public class AirDropFlowTests : IDisposable
 
         await h.ServerTask.WaitAsync(TimeSpan.FromSeconds(30));
 
-        Assert.Contains(log, line => line.StartsWith("early-ask: replying 200 before", StringComparison.Ordinal));
-        Assert.Contains(log, line => line.StartsWith("early-ask: full body of ", StringComparison.Ordinal));
+        Assert.Contains(log, line => line.StartsWith("early-ask: answering 200 before", StringComparison.Ordinal));
+        Assert.Contains(log, line => line.StartsWith("early-ask: body of ", StringComparison.Ordinal));
         Assert.Equal("sent under early-ask", await File.ReadAllTextAsync(Path.Combine(_downloadDir, "early.txt")));
+    }
+
+    [Fact]
+    public async Task Early_ask_writes_nothing_when_the_prompt_is_declined()
+    {
+        // Early-ask answers /Ask before anyone has been asked, so the boundary moves to the
+        // disk: the bytes arrive, the person says no, and nothing may be left behind. This
+        // is the test that keeps the answer-first trick from becoming an open door.
+        var log = new List<string>();
+        Harness h = await StartAsync((_, _) => Task.FromResult(false), log: log.Add, earlyAsk: true);
+
+        try
+        {
+            var file = AirDropOutgoingFile.FromPath(WriteTempFile("refused.txt", "must not land"));
+
+            // /Ask still reports success: that answer went out before the decision existed.
+            Assert.True(await h.Session.AskAsync(new AirDropAskRequest(
+                "Sender PC", "Windows", "id", AirDropAskRequest.FinderBundleId, [file.ToEntry()])));
+
+            // The refusal reaches the sender as a rejected upload instead.
+            await Assert.ThrowsAsync<AirDropHttpException>(() => h.Session.UploadAsync([file]));
+        }
+        finally
+        {
+            await h.Shutdown();
+        }
+
+        AirDropTransferResult? result = await h.ServerTask.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.Null(result);
+        Assert.False(File.Exists(Path.Combine(_downloadDir, "refused.txt")));
+        Assert.Contains(log, line => line.Contains("declined after the body arrived"));
     }
 
     [Fact]

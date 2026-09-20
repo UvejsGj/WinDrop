@@ -944,3 +944,65 @@ should already be fast.
    read the body for display, then let iOS proceed?
 3. What is the 5.7 MB baseline on iOS 27 at default buffers (the 144 s figure was 26.6)?
 4. Do below-default socket buffers beat that baseline?
+
+#### 2026-09-20 — CONFIRMED: answering /Ask first fixes the declines; the link is the rest
+
+Session 7, receiver at `8a96074`, phone on iOS 27.0, `--early-ask --yes`.
+
+**The experiment worked, but not by the mechanism it was built to test.** iOS sent the
+complete /Ask body every time (47,847 / 49,806 / 14,128 bytes), so it does not take RFC
+9110's option to stop uploading after a final response. The preview is never skipped. What
+the early 200 does is stop iOS's timer, which runs on the **/Ask round trip**: an answer
+that waits for the body lands too late. Three taps out of three cleared the handshake,
+including one whose body took 8,323 ms — squarely in the range that was declined every
+single time in session 6.
+
+```
+11:37:14 request POST /Ask (chunked)
+11:37:14 early-ask: replying 200 before reading the body
+11:37:22 early-ask: full body of 49,806 bytes still arrived 8,323 ms after the early reply
+11:37:22 request POST /Upload (chunked)
+11:41:05 dvzip: 30 block(s), 15 zlib, 15 stored
+11:41:05 member ./IMG_xxxx.PNG (3,627,446 bytes)
+11:41:05 upload complete: 1 file(s), 3,627,446 bytes -> 200
+```
+
+**New record: 3,627,446 bytes, intact, in 223 s (~16 KB/s).** A ~25.6 MB item died one
+second into /Upload with nothing delivered, and with a ~40 MB image selected the receiver
+stopped appearing in the AirDrop row at all — iOS gives up before reaching us.
+
+**Consent had to move rather than vanish.** The 200 only tells the sender to proceed; what
+matters is whether bytes are written. The receiver now answers /Ask first, runs the prompt
+*while the upload streams in*, and extracts only if it is granted — a refusal discards the
+buffer, answers 401 and leaves nothing on disk. The cost, recorded plainly: an unapproved
+sender can make us receive and buffer an upload before anyone agrees to it. Default is
+still off pending a decision on whether that trade is acceptable for the product.
+
+**The remaining blocker is channel overlap, and it is not a software problem.** OWL logged
+the phone's sequence directly:
+
+```
+11:47:12 peer changed channel sequence to 149,149,149,149,149,149,0,0,6,149,149,149,149,149,0,0
+11:47:51 peer changed channel sequence to 149,0,149,0,0,0,0,0,6,6,149,0,0,0,0,0
+```
+
+Almost all 149, dipping to 6 briefly. The AX211 may only transmit on 6. Throughput measured
+15 KB/s, then 6 KB/s, then ~16 KB/s sustained, then collapse — degrading across the session.
+
+**Hypothesis worth testing before buying anything: the phone follows its infrastructure
+channel.** Session 5 saw "mostly 44", session 7 "almost exclusively 149". Apple devices fold
+the channel of the Wi-Fi network they are joined to into the AWDL sequence, so a single
+radio can serve both. If that is what is happening, the sequence is tracking the router's
+5 GHz channel, and joining the phone to a **2.4 GHz** network should pull the sequence onto
+channel 6, where this card can actually transmit. Free to test: a 2.4 GHz-only SSID, a
+hotspot from another device, or Wi-Fi off entirely to see what AWDL falls back to. If it
+works, it changes the project's ceiling without new hardware.
+
+### Open questions
+
+1. Does the phone's AWDL sequence follow its infrastructure Wi-Fi channel? Joining it to
+   2.4 GHz is the test.
+2. Should early-ask be the default, given it buffers an unapproved upload?
+3. iOS 27 baselines at default buffers, taken early in a session while the link is fresh:
+   1.8 MB and 5.7 MB.
+4. Where between 3.6 MB and 25 MB does a single file stop arriving?

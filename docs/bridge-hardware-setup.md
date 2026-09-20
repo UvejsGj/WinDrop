@@ -226,6 +226,16 @@ protocol's only real security boundary.
   the phone spends most of its time) rather than channel 6 — different hardware, or a way
   past the AX211's self-managed 5 GHz rules. Non-image shares carry no preview and are
   unaffected.
+- **Session 7 answered it: use `receive --early-ask`.** iOS sends the preview regardless, so
+  nothing is saved there, but answering `/Ask` before reading the body stops iOS timing out
+  the handshake — three of three taps cleared, including an 8.3 s body, where session 6 was
+  declined every time. Largest file yet: 3.6 MB in 223 s. ~25 MB dies within a second.
+- **Before buying a card, try moving the phone to 2.4 GHz.** Apple devices fold the channel
+  of the network they are joined to into their AWDL sequence, which is the likeliest reason
+  it was 44 in session 5 and 149 in session 7: it tracks the router's 5 GHz channel. Joining
+  the phone to a 2.4 GHz-only SSID, a hotspot from another device, or turning its Wi-Fi off
+  should pull the sequence toward channel 6, the only channel this card may transmit on.
+  Read the answer straight out of OWL: `peer changed channel sequence to ...`.
 
 When a second radio is present, use `sudo iw list | grep -i "active monitor"` rather
 than naming `phy0`. It covers every phy, and a dongle will not be `phy0` beside an

@@ -34,10 +34,11 @@ public sealed class AirDropReceiverOptions
     public int MaxAskBodyBytes { get; init; } = 1024 * 1024;
 
     /// <summary>
-    /// Experimental, diagnostic only. Answers /Ask with 200 before reading its body, to
-    /// measure whether iOS stops uploading the preview on an early final response. It
-    /// accepts sight-unseen, so it is meaningful only under auto-accept and must never be
-    /// the product path. See <see cref="AirDropReceiver"/>.
+    /// Answers /Ask with 200 before reading its body, then asks for consent while the upload
+    /// arrives, writing nothing unless it is granted. Without this, iOS times out the /Ask
+    /// round trip on a slow AWDL link and reports a decline; with it, the same transfers
+    /// succeed. The trade is that an unapproved sender can make us receive and buffer an
+    /// upload before anyone agrees to it. See <see cref="AirDropReceiver"/>.
     /// </summary>
     public bool EarlyAskReply { get; init; }
 }
@@ -67,6 +68,11 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
         AirDropAskRequest? accepted = null;
         AirDropTransferResult? result = null;
 
+        // Set only in early-ask mode, where the answer to /Ask goes out before anyone has
+        // been asked. It carries the decision that is still being made while the upload
+        // arrives, and /Upload waits on it before writing anything.
+        Task<bool>? pendingConsent = null;
+
         while (await connection.ReadRequestHeadAsync(ct) is { } head)
         {
             // Compare on the path only; a peer may append a query string.
@@ -90,7 +96,7 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
                 {
                     if (options.EarlyAskReply)
                     {
-                        (state, accepted) = await HandleEarlyAskAsync(connection, head.Headers, ct);
+                        (state, accepted, pendingConsent) = await HandleEarlyAskAsync(connection, head.Headers, ct);
                         break;
                     }
 
@@ -159,8 +165,18 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
                         break;
                     }
 
-                    result = await ReceiveUploadAsync(connection, head.Headers, accepted, ct);
+                    result = await ReceiveUploadAsync(connection, head.Headers, accepted, pendingConsent, ct);
                     state = State.Completed;
+
+                    if (result is null)
+                    {
+                        // Early-ask only: the bytes arrived, the person said no, and nothing
+                        // was written. The refusal still has to reach the sender.
+                        options.Log?.Invoke("-> 401: declined while the upload was arriving; nothing written");
+                        await connection.WriteResponseAsync(401, "Unauthorized", new HttpHeaders(), ReadOnlyMemory<byte>.Empty, ct);
+                        break;
+                    }
+
                     options.Log?.Invoke($"upload complete: {result.Files.Count} file(s), {result.TotalBytes:N0} bytes -> 200");
 
                     await connection.WriteResponseAsync(200, "OK", new HttpHeaders(), ReadOnlyMemory<byte>.Empty, ct);
@@ -180,32 +196,36 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
     }
 
     /// <summary>
-    /// The experiment behind <see cref="AirDropReceiverOptions.EarlyAskReply"/>.
+    /// Early-ask: answer /Ask before reading its body, then ask the person while the upload
+    /// is already arriving.
     ///
-    /// The /Ask body is ~97% preview image and takes 10–19 s to arrive over this link,
-    /// which is the whole of the delay that makes iOS abandon transfers. The body cannot be
-    /// parsed early — a binary plist is unreadable until its trailer, which follows the
-    /// preview — so the only way to skip the preview is to make the *sender* stop sending
-    /// it. RFC 9110 lets a client stop uploading a body once it sees a final response. This
-    /// sends 200 before reading anything, then measures what iOS does with the body:
+    /// Measured against iOS 27 (2026-09-19/20). The /Ask body is ~97% preview image and
+    /// takes 3–19 s to arrive over an AWDL link this slow. iOS runs a timer on the /Ask
+    /// round trip, and an answer that waits for the body lands too late: every such transfer
+    /// came back as "Declined" on the phone. Replying first stops that clock — three of
+    /// three succeeded afterwards, including one whose body took 8.3 s.
     ///
-    ///   * completes in ~10–19 s at full size → iOS ignored the early reply; the bottleneck
-    ///     is the link, and no receiver-side change helps
-    ///   * completes fast and small, or does not complete → iOS reacted; a real fix exists
+    /// It does *not* save the preview transfer. iOS sends the whole body regardless, so the
+    /// RFC 9110 permission for a client to stop uploading after a final response is either
+    /// unimplemented or unused here. The win is purely in the timing of the answer.
     ///
-    /// It accepts before knowing what was sent, so it is a measurement tool, not a design.
+    /// Consent therefore moves rather than disappears. The 200 only says "go ahead and
+    /// send"; the decision that matters is whether the bytes are written, and /Upload waits
+    /// on the returned task before extracting anything. Declining leaves nothing on disk and
+    /// answers the upload with 401. What it does cost is that an unapproved sender can make
+    /// us receive and buffer an upload before anyone says yes.
     /// </summary>
-    private async Task<(State, AirDropAskRequest?)> HandleEarlyAskAsync(
+    private async Task<(State, AirDropAskRequest?, Task<bool>?)> HandleEarlyAskAsync(
         HttpConnection connection, HttpHeaders headers, CancellationToken ct)
     {
-        options.Log?.Invoke("early-ask: replying 200 before reading the body (experimental, accepts sight-unseen)");
+        options.Log?.Invoke("early-ask: answering 200 before reading the body; consent decides the write");
 
         await RespondPlistAsync(connection, 200, "OK",
             new AirDropReceiverIdentity(options.ComputerName, options.ModelName).ToPlist(), ct);
 
         var timer = Stopwatch.StartNew();
 
-        // If iOS reacts by simply ceasing to write, with no terminating chunk, the body read
+        // If a sender ever does stop writing without a terminating chunk, the body read
         // would block forever, so the drain is bounded.
         using var drain = CancellationTokenSource.CreateLinkedTokenSource(ct);
         drain.CancelAfter(TimeSpan.FromSeconds(30));
@@ -215,33 +235,59 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
             byte[] body = await connection.ReadBodyAsync(headers, options.MaxAskBodyBytes, drain.Token);
 
             options.Log?.Invoke(
-                $"early-ask: full body of {body.Length:N0} bytes still arrived {timer.ElapsedMilliseconds:N0} ms after the early reply");
+                $"early-ask: body of {body.Length:N0} bytes arrived {timer.ElapsedMilliseconds:N0} ms after the answer");
 
             if (BinaryPlistReader.Parse(body) is IReadOnlyDictionary<string, object?> plist)
-                return (State.Accepted, AirDropAskRequest.FromPlist(plist));
+            {
+                AirDropAskRequest request = AirDropAskRequest.FromPlist(plist);
+
+                // Started, not awaited: the prompt runs while the upload streams in.
+                Task<bool> consent = StartConsentAsync(request, ct);
+                return (State.Accepted, request, consent);
+            }
+
+            options.Log?.Invoke("early-ask: the body was not a plist, so there is nothing to consent to");
         }
         catch (OperationCanceledException) when (drain.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            options.Log?.Invoke(
-                $"early-ask: no complete body {timer.ElapsedMilliseconds:N0} ms after the early reply — iOS may have stopped sending the preview");
+            options.Log?.Invoke($"early-ask: no complete body {timer.ElapsedMilliseconds:N0} ms after the answer");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            options.Log?.Invoke(
-                $"early-ask: body read ended after {timer.ElapsedMilliseconds:N0} ms: {ex.Message}");
+            options.Log?.Invoke($"early-ask: body read ended after {timer.ElapsedMilliseconds:N0} ms: {ex.Message}");
         }
 
-        // Truncated, timed out or unparseable: proceed so /Upload can still be observed. The
-        // synthetic request has no files, so every arriving member is reported as unlisted —
-        // which is the honest state, nothing having been read to consent to.
-        return (State.Accepted, new AirDropAskRequest(
-            "unknown (early-ask)", "unknown", "", AirDropAskRequest.FinderBundleId, []));
+        // No readable request means nothing to put in front of a person, so nothing may be
+        // written. The connection still proceeds, so the refusal is observable rather than
+        // a silent hang.
+        return (State.Accepted,
+            new AirDropAskRequest("unknown (early-ask)", "unknown", "", AirDropAskRequest.FinderBundleId, []),
+            Task.FromResult(false));
     }
 
-    private async Task<AirDropTransferResult> ReceiveUploadAsync(
+    /// <summary>Runs the consent handler, turning any failure into a refusal.</summary>
+    private async Task<bool> StartConsentAsync(AirDropAskRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return await options.ConsentHandler(request, ct);
+        }
+        catch (Exception ex)
+        {
+            options.Log?.Invoke($"consent failed, treating as declined: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Reads one upload. Returns null when it arrived but was declined, which only happens
+    /// in early-ask mode, where the answer to /Ask preceded the decision.
+    /// </summary>
+    private async Task<AirDropTransferResult?> ReceiveUploadAsync(
         HttpConnection connection,
         HttpHeaders headers,
         AirDropAskRequest? consented,
+        Task<bool>? pendingConsent,
         CancellationToken ct)
     {
         // The compression is NOT signalled in a header. opendrop sends only
@@ -288,6 +334,14 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
             await AirDropCompression.DecompressAsync(body, archive, isDvZip: !isGzip, options.Log, ct);
 
         archive.Position = 0;
+
+        // The last point at which a decision can still be honoured: everything above is in
+        // memory, and nothing has touched the download directory yet.
+        if (pendingConsent is not null && !await pendingConsent)
+        {
+            options.Log?.Invoke("upload discarded: declined after the body arrived");
+            return null;
+        }
 
         return await ExtractAsync(archive, consented, ct);
     }
