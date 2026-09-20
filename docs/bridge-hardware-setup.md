@@ -230,12 +230,21 @@ protocol's only real security boundary.
   nothing is saved there, but answering `/Ask` before reading the body stops iOS timing out
   the handshake — three of three taps cleared, including an 8.3 s body, where session 6 was
   declined every time. Largest file yet: 3.6 MB in 223 s. ~25 MB dies within a second.
-- **Before buying a card, try moving the phone to 2.4 GHz.** Apple devices fold the channel
-  of the network they are joined to into their AWDL sequence, which is the likeliest reason
-  it was 44 in session 5 and 149 in session 7: it tracks the router's 5 GHz channel. Joining
-  the phone to a 2.4 GHz-only SSID, a hotspot from another device, or turning its Wi-Fi off
-  should pull the sequence toward channel 6, the only channel this card may transmit on.
-  Read the answer straight out of OWL: `peer changed channel sequence to ...`.
+- **Moving the phone to 2.4 GHz does not work — tested and refuted (session 8).** The
+  mechanism is real: the phone's sequence tracked the router's 2.4 GHz channel, an 11
+  appearing and then vanishing when the router was pinned to 6. But it only ever occupies
+  one or two slots. Channel 44 kept fifteen of sixteen regardless, and a transfer under the
+  pinned condition was no faster. No home-network configuration fixes this.
+- **The untried route is channel 44 with a concurrent connection.** This card reports 44 as
+  `IR-CONCURRENT`: transmission allowed there *while the card holds a connection on that
+  channel*. That is where the phone lives. Put the router's 5 GHz band on 44, join Kali to
+  it as a station, then add a monitor interface **beside** the station instead of converting
+  it, and run OWL there: `bash tools/owl-concurrent.sh wlan0 44`. It must not kill
+  NetworkManager — the association is the condition being satisfied. The open unknown is
+  whether `iwlmvm` allows monitor and managed interfaces at once; the script prints the
+  card's valid interface combinations before it tries.
+- **Do not chase channel 149.** In ETSI countries 5745 MHz is not available for this, which
+  is exactly what the card's no-IR flag on it reports.
 
 When a second radio is present, use `sudo iw list | grep -i "active monitor"` rather
 than naming `phy0`. It covers every phy, and a dongle will not be `phy0` beside an

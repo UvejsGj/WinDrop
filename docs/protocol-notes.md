@@ -1006,3 +1006,56 @@ works, it changes the project's ceiling without new hardware.
 3. iOS 27 baselines at default buffers, taken early in a session while the link is fresh:
    1.8 MB and 5.7 MB.
 4. Where between 3.6 MB and 25 MB does a single file stop arriving?
+
+#### 2026-09-20 — REFUTED: the phone does not follow its Wi-Fi channel far enough to matter
+
+Session 8, receiver at `702c4e7`, phone on iOS 27.0. The hypothesis was that joining the
+phone to a 2.4 GHz network would pull its AWDL sequence onto channel 6.
+
+**The mechanism is real and was confirmed twice.** With the phone moved to a 2.4 GHz SSID,
+149 disappeared and an 11 appeared — channel 11 being what the router had auto-selected:
+
+```
+20:06:01 peer changed channel sequence to 44,44,44,44,44,44,0,0,6,44,44,44,44,44,0,0
+20:06:12 peer changed channel sequence to 11,0,44,0,0,0,0,0,6,0,44,0,0,0,0,0
+```
+
+Pinning the router's 2.4 GHz band to channel 6 then made the 11 vanish, so the phone was
+tracking the router move. **But the 44s never budged**: one channel-6 slot in sixteen,
+before and after. A transfer under the pinned condition reached DVZip block 13 in two
+minutes and then died, identical to session 7. The avenue is closed: no home-network
+configuration brings this phone onto channel 6 often enough to matter.
+
+**Three Apple devices were in range, and the other two sat on channel 6** — one advertising
+all sixteen slots there. Full channel-6 commitment is clearly possible for an Apple device;
+it is just not what a 5 GHz-capable phone does. Peer MACs and UUIDs rotate every few
+minutes, so identity cannot be tracked by MAC across a session; attribution here rests on
+which peer was active during the transfer, and on the fact that a peer sharing one slot in
+sixteen is the only one that produces a two-minute crawl.
+
+**What the refutation leaves is a better target, from our own regulatory readings.**
+Session 6 recorded the AX211's flags once disconnected: 149 passive/no-IR, 44
+**IR-CONCURRENT**, 6 unrestricted. Every session since has used 6 because it needed no
+condition. But IR-CONCURRENT is a condition that can be met: the card may transmit on 44
+while it holds a concurrent connection on that channel — and 44 is precisely where the
+phone spends fifteen of sixteen slots. 149 is not worth pursuing separately: in ETSI
+countries 5745 MHz is not available for this, which is what its no-IR flag reports.
+
+So the experiment that was never run is: put the router's 5 GHz band on channel 44, join
+Kali to it as an ordinary station, add a **monitor interface beside the station** rather
+than converting it, and run OWL on channel 44 with `-N`. `tools/owl-concurrent.sh` does
+this, and deliberately does not kill NetworkManager, since the association is the point.
+
+It turns on one unknown: whether `iwlmvm` permits a monitor interface concurrently with a
+managed one. The script prints the card's valid interface combinations before trying, so
+the answer is legible either way. If the card refuses, hardware is the answer and this is
+the last free idea; if it accepts, the overlap goes from one slot in sixteen to fifteen.
+
+### Open questions
+
+1. Does this card allow monitor alongside managed, and does IR-CONCURRENT then permit
+   injection on 44?
+2. iOS 27 baselines at default buffers, taken early while the link is fresh: 1.8 MB, 5.7 MB.
+   Outstanding for three sessions.
+3. Where between 3.6 MB and 25 MB does a single file stop arriving?
+4. Should early-ask be the default, given it buffers an unapproved upload?
