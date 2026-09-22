@@ -258,6 +258,10 @@ protocol's only real security boundary.
   explanation is that this card cannot do active monitor mode, so the phone never gets
   acknowledgements and retries every frame. That makes the AX211 a working but slow radio,
   and the next real step a card that passes the active-monitor test in Phase 0 below.
+  **Measure it before believing it:** with OWL up, run `bash tools/retry-capture.sh` in a
+  third terminal and start a transfer. It only listens, and it reports how many times each
+  of the phone's frames to us was seen. About once means the phone is acknowledged; several
+  times means it is not. It prints counts, never addresses.
 - **`--early-ask` is now the default.** Passing it is harmless; `--no-early-ask` turns it
   off. Test once *without* `--yes`: how long iOS will wait while a person decides has never
   been measured.
