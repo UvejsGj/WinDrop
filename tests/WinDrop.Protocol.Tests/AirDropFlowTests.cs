@@ -1,11 +1,16 @@
+using System.Buffers.Binary;
+using System.Diagnostics;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using WinDrop.Protocol;
 using WinDrop.Protocol.Archive;
+using WinDrop.Protocol.Compression;
 using WinDrop.Protocol.Discovery;
 using WinDrop.Protocol.Http;
+using WinDrop.Protocol.Plist;
 using WinDrop.Protocol.Tls;
 using Xunit;
 
@@ -28,16 +33,22 @@ public class AirDropFlowTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    /// <summary>
+    /// <see cref="Client"/> is the sender's TLS stream, for tests that must send what our own
+    /// sender never would. Such a test drives it directly and leaves <see cref="Session"/> unused.
+    /// </summary>
     private sealed record Harness(
         Task<AirDropTransferResult?> ServerTask,
         AirDropSenderSession Session,
+        Stream Client,
         Func<Task> Shutdown);
 
     private async Task<Harness> StartAsync(
         Func<AirDropAskRequest, CancellationToken, Task<bool>> consent,
         AirDropReceiverFlags flags = AirDropReceiverFlags.SupportsDvZip,
         Action<string>? log = null,
-        bool earlyAsk = false)
+        bool earlyAsk = false,
+        long maxExtractedBytes = AirDropReceiverOptions.DefaultMaxExtractedBytes)
     {
         var receiver = new AirDropReceiver(new AirDropReceiverOptions
         {
@@ -46,6 +57,7 @@ public class AirDropFlowTests : IDisposable
             Flags = flags,
             Log = log,
             EarlyAskReply = earlyAsk,
+            MaxExtractedBytes = maxExtractedBytes,
         });
 
         X509Certificate2 serverCert = AirDropCertificate.CreateSelfSigned("WinDrop-Receiver");
@@ -68,7 +80,7 @@ public class AirDropFlowTests : IDisposable
 
         var session = new AirDropSenderSession(clientSsl, flags);
 
-        return new Harness(serverTask, session, async () =>
+        return new Harness(serverTask, session, clientSsl, async () =>
         {
             await session.DisposeAsync();
             await clientSsl.DisposeAsync();
@@ -515,6 +527,157 @@ public class AirDropFlowTests : IDisposable
         Assert.Equal(payload.Length, result!.TotalBytes);
         Assert.Equal(payload, await File.ReadAllBytesAsync(Path.Combine(_downloadDir, "big.bin")));
     }
+
+    /// <summary>Everything left in a directory, hidden entries included, since staging is hidden.</summary>
+    internal static string[] LeftBehind(string directory) =>
+        Directory.Exists(directory)
+            ? Directory.GetFileSystemEntries(directory, "*", new EnumerationOptions
+            {
+                AttributesToSkip = 0,
+                RecurseSubdirectories = true,
+            })
+            : [];
+
+    private static byte[] ZlibBlock(byte[] content)
+    {
+        using var compressed = new MemoryStream();
+        using (var deflate = new ZLibStream(compressed, CompressionLevel.Optimal, leaveOpen: true))
+            deflate.Write(content);
+
+        var framed = new byte[4 + compressed.Length];
+        BinaryPrimitives.WriteUInt32BigEndian(framed, (uint)compressed.Length);
+        compressed.ToArray().CopyTo(framed, 4);
+        return framed;
+    }
+
+    [Fact]
+    public async Task A_DVZip_upload_that_inflates_past_the_cap_fails_and_leaves_nothing()
+    {
+        // A bomb from a sender the person accepted. The archive is honest, one small file
+        // and its trailer, and then a gigabyte of zeros after the trailer: sixty-four DVZip
+        // blocks of 16 MiB each, about a megabyte on the wire. No header declares those
+        // bytes, so only counting what decompresses can catch them. The receiver this
+        // replaced inflated the whole gigabyte into a MemoryStream and then wrote the file.
+        const long cap = 4 * 1024 * 1024;
+        Harness h = await StartAsync((_, _) => Task.FromResult(true), maxExtractedBytes: cap);
+
+        var archive = new MemoryStream();
+        var writer = new CpioWriter(archive);
+        await writer.WriteDirectoryAsync(".");
+        await writer.WriteFileAsync("./small.bin", new byte[1000]);
+        await writer.CompleteAsync();
+
+        var body = new MemoryStream();
+        await DvZip.CompressAsync(new MemoryStream(archive.ToArray()), body);
+
+        byte[] zeros = ZlibBlock(new byte[16 * 1024 * 1024]);
+        for (int i = 0; i < 64; i++) body.Write(zeros);
+
+        var timer = Stopwatch.StartNew();
+
+        try
+        {
+            await using var http = new HttpConnection(h.Client, ownsStream: false);
+
+            var ask = new AirDropAskRequest("Sender PC", "Windows", "id", AirDropAskRequest.FinderBundleId,
+                [AirDropFileEntry.ForFile("small.bin")]);
+
+            var askHeaders = new HttpHeaders();
+            askHeaders.Set("Content-Type", "application/octet-stream");
+            await http.WriteRequestAsync("POST", "/Ask", askHeaders, BinaryPlistWriter.Write(ask.ToPlist()));
+
+            HttpResponseHead answer = await http.ReadResponseHeadAsync();
+            await http.ReadBodyAsync(answer.Headers, 1024 * 1024);
+            Assert.True(answer.IsSuccess);
+
+            var uploadHeaders = new HttpHeaders();
+            uploadHeaders.Set("Content-Type", "application/x-cpio");
+
+            try
+            {
+                await http.WriteStreamingRequestAsync("POST", "/Upload", uploadHeaders,
+                    (stream, token) => stream.WriteAsync(body.ToArray(), token).AsTask());
+            }
+            catch (IOException)
+            {
+                // The receiver may hang up before the body is all sent, which is the point.
+            }
+        }
+        finally
+        {
+            await h.Shutdown();
+        }
+
+        var failure = await Assert.ThrowsAsync<AirDropHttpException>(
+            () => h.ServerTask.WaitAsync(TimeSpan.FromSeconds(30)));
+
+        Assert.Contains("Unpacked upload exceeded", failure.Message);
+        Assert.Empty(LeftBehind(_downloadDir));
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(10), $"Refusing took {timer.Elapsed}; it should stop at the cap.");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_multi_file_share_with_a_folder_arrives_intact(bool earlyAsk)
+    {
+        // Unpacking now streams each member into staging and moves them into place at the
+        // end, so this is the check that it still delivers: several items, one spanning
+        // many DVZip blocks, a folder with a file inside, byte for byte, and no staging
+        // directory left over. Both consent orders, since early-ask is now the default.
+        Harness h = await StartAsync((_, _) => Task.FromResult(true), earlyAsk: earlyAsk);
+
+        string source = Path.Combine(Path.GetTempPath(), $"windrop-share-{Guid.NewGuid():N}");
+        string album = Path.Combine(source, "Album");
+        Directory.CreateDirectory(album);
+
+        var photo = new byte[300_001]; // incompressible, and not block-aligned
+        var inAlbum = new byte[70_001];
+        Random.Shared.NextBytes(photo);
+        Random.Shared.NextBytes(inAlbum);
+
+        await File.WriteAllBytesAsync(Path.Combine(source, "IMG_0001.HEIC"), photo);
+        await File.WriteAllTextAsync(Path.Combine(source, "notes.txt"), "a note");
+        await File.WriteAllBytesAsync(Path.Combine(album, "IMG_0002.JPG"), inAlbum);
+
+        AirDropTransferResult? result;
+
+        try
+        {
+            AirDropOutgoingFile[] files =
+            [
+                AirDropOutgoingFile.FromPath(Path.Combine(source, "IMG_0001.HEIC")),
+                AirDropOutgoingFile.FromPath(Path.Combine(source, "notes.txt")),
+                AirDropOutgoingFile.FromPath(album),
+            ];
+
+            Assert.True(await h.Session.AskAsync(new AirDropAskRequest(
+                "Sender PC", "Windows", "id", AirDropAskRequest.FinderBundleId,
+                files.Select(f => f.ToEntry()).ToList())));
+
+            await h.Session.UploadAsync(files);
+        }
+        finally
+        {
+            await h.Shutdown();
+        }
+
+        try
+        {
+            result = await h.ServerTask.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            Directory.Delete(source, recursive: true);
+        }
+
+        Assert.Equal(3, result!.Files.Count);
+        Assert.Equal(photo.Length + "a note".Length + inAlbum.Length, result.TotalBytes);
+        Assert.Equal(photo, await File.ReadAllBytesAsync(Path.Combine(_downloadDir, "IMG_0001.HEIC")));
+        Assert.Equal("a note", await File.ReadAllTextAsync(Path.Combine(_downloadDir, "notes.txt")));
+        Assert.Equal(inAlbum, await File.ReadAllBytesAsync(Path.Combine(_downloadDir, "Album", "IMG_0002.JPG")));
+        Assert.DoesNotContain(LeftBehind(_downloadDir), path => path.Contains(".windrop-incoming-"));
+    }
 }
 
 /// <summary>
@@ -711,5 +874,187 @@ public class ArchiveRootTests : IDisposable
         Assert.Equal(2, result.Files.Count);
         Assert.Contains("member ./extra.txt was not in the accepted /Ask list", log);
         Assert.DoesNotContain(log, line => line.Contains("./wanted.txt was not in"));
+    }
+}
+
+/// <summary>
+/// Unpacking streams to disk, so its limits and its all-or-nothing rule are what stand
+/// between an accepted sender and the machine's memory and disk. Every case here would have
+/// passed through, or run out of memory in, the receiver that inflated uploads into RAM.
+/// </summary>
+public class StreamedExtractionTests : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), $"windrop-streamed-{Guid.NewGuid():N}");
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_root, recursive: true); } catch { /* best effort */ }
+        GC.SuppressFinalize(this);
+    }
+
+    private AirDropReceiver Receiver(
+        long maxExtractedBytes = AirDropReceiverOptions.DefaultMaxExtractedBytes,
+        int maxArchiveMembers = 100_000) => new(new AirDropReceiverOptions
+    {
+        DownloadDirectory = _root,
+        ConsentHandler = (_, _) => Task.FromResult(true),
+        MaxExtractedBytes = maxExtractedBytes,
+        MaxArchiveMembers = maxArchiveMembers,
+    });
+
+    private static async Task<byte[]> ArchiveAsync(Func<CpioWriter, Task> build)
+    {
+        var output = new MemoryStream();
+        var writer = new CpioWriter(output);
+        await build(writer);
+        await writer.CompleteAsync();
+        return output.ToArray();
+    }
+
+    /// <summary>
+    /// A newc header with no content after it. Built by hand, because CpioWriter will not
+    /// write a header without the bytes it declares.
+    /// </summary>
+    private static byte[] BareHeader(string name, long size)
+    {
+        byte[] nameBytes = Encoding.UTF8.GetBytes(name);
+        long[] fields = [1, CpioEntry.RegularFileMode, 0, 0, 1, 0, size, 0, 0, 0, 0, nameBytes.Length + 1, 0];
+
+        var header = new List<byte>(Encoding.ASCII.GetBytes("070701" + string.Concat(fields.Select(f => f.ToString("x8")))));
+        header.AddRange(nameBytes);
+        header.Add(0);
+
+        while (header.Count % 4 != 0) header.Add(0);
+        return [.. header];
+    }
+
+    private static byte[] Noise(int length)
+    {
+        var bytes = new byte[length];
+        Random.Shared.NextBytes(bytes);
+        return bytes;
+    }
+
+    [Fact]
+    public async Task A_header_claiming_more_than_the_cap_is_refused_before_anything_is_allocated()
+    {
+        // One header, four gigabytes claimed, no data. The old reader allocated whatever
+        // the header said before reading a byte of content.
+        byte[] archive = BareHeader("./huge.bin", 0xFFFF_FFFF);
+
+        var failure = await Assert.ThrowsAsync<AirDropHttpException>(
+            () => Receiver(maxExtractedBytes: 1024L * 1024 * 1024).ExtractAsync(new MemoryStream(archive), null, default));
+
+        Assert.Contains("declare", failure.Message);
+        Assert.Empty(AirDropFlowTests.LeftBehind(_root));
+    }
+
+    [Fact]
+    public async Task Members_already_unpacked_are_removed_when_a_later_one_breaks_the_cap()
+    {
+        // Each member fits on its own; together they do not. The first is fully on disk,
+        // in staging, by the time the second's header says too much.
+        byte[] archive = await ArchiveAsync(async writer =>
+        {
+            await writer.WriteFileAsync("./first.bin", Noise(600_000));
+            await writer.WriteFileAsync("./second.bin", Noise(600_000));
+        });
+
+        await Assert.ThrowsAsync<AirDropHttpException>(
+            () => Receiver(maxExtractedBytes: 1024 * 1024).ExtractAsync(new MemoryStream(archive), null, default));
+
+        Assert.Empty(AirDropFlowTests.LeftBehind(_root));
+    }
+
+    [Fact]
+    public async Task An_archive_cut_off_part_way_leaves_nothing_behind()
+    {
+        // The common failure over AWDL: the link dies mid-transfer. The first member is
+        // complete, the second is not, and a share must arrive whole or not at all.
+        byte[] archive = await ArchiveAsync(async writer =>
+        {
+            await writer.WriteFileAsync("./first.bin", Noise(1000));
+            await writer.WriteFileAsync("./second.bin", Noise(1000));
+        });
+
+        int cut = archive.Length - 800; // inside second.bin's content
+
+        await Assert.ThrowsAsync<CpioFormatException>(
+            () => Receiver().ExtractAsync(new MemoryStream(archive, 0, cut), null, default));
+
+        Assert.Empty(AirDropFlowTests.LeftBehind(_root));
+    }
+
+    [Fact]
+    public async Task An_upload_cut_off_after_its_trailer_is_still_a_failed_upload()
+    {
+        // Every member and the trailer arrived, then the body failed before its end. The
+        // transport never said the body was complete, so nothing is kept.
+        byte[] archive = await ArchiveAsync(writer => writer.WriteFileAsync("./photo.jpg", Noise(5000)));
+
+        await Assert.ThrowsAsync<IOException>(
+            () => Receiver().ExtractAsync(new FailsAtEndStream(archive), null, default));
+
+        Assert.Empty(AirDropFlowTests.LeftBehind(_root));
+    }
+
+    [Fact]
+    public async Task An_archive_with_too_many_members_is_refused()
+    {
+        byte[] archive = await ArchiveAsync(async writer =>
+        {
+            await writer.WriteDirectoryAsync(".");
+            for (int i = 0; i < 5; i++)
+                await writer.WriteFileAsync($"./empty{i}.txt", ReadOnlyMemory<byte>.Empty);
+        });
+
+        var failure = await Assert.ThrowsAsync<AirDropHttpException>(
+            () => Receiver(maxArchiveMembers: 3).ExtractAsync(new MemoryStream(archive), null, default));
+
+        Assert.Contains("more than 3 members", failure.Message);
+        Assert.Empty(AirDropFlowTests.LeftBehind(_root));
+    }
+
+    [Fact]
+    public async Task The_root_member_does_not_count_against_the_member_limit()
+    {
+        // iOS opens every archive with "."; a limit of one must still allow one real file.
+        byte[] archive = await ArchiveAsync(async writer =>
+        {
+            await writer.WriteDirectoryAsync(".");
+            await writer.WriteFileAsync("./IMG_0001.JPG", "jpeg"u8.ToArray());
+        });
+
+        AirDropTransferResult result = await Receiver(maxArchiveMembers: 1).ExtractAsync(new MemoryStream(archive), null, default);
+
+        Assert.Single(result.Files);
+    }
+
+    /// <summary>Serves its bytes, then fails where a clean end would be, as a dropped link does.</summary>
+    private sealed class FailsAtEndStream(byte[] content) : Stream
+    {
+        private readonly MemoryStream _inner = new(content);
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            int read = _inner.Read(buffer, offset, count);
+            return read > 0 ? read : throw new IOException("Connection reset before the body ended.");
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+        {
+            int read = _inner.Read(buffer.Span);
+            return read > 0 ? ValueTask.FromResult(read) : throw new IOException("Connection reset before the body ended.");
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }

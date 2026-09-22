@@ -261,6 +261,12 @@ protocol's only real security boundary.
 - **`--early-ask` is now the default.** Passing it is harmless; `--no-early-ask` turns it
   off. Test once *without* `--yes`: how long iOS will wait while a person decides has never
   been measured.
+- **Uploads now stream to disk, which changes when log lines appear.** A `member` line is
+  printed as each file *starts* arriving, not once it is saved, so a transfer that dies
+  still shows its members. The only success line is `upload complete`. `dvzip: N block(s)`
+  now comes after the member lines, at the very end. `block N is stored` still means block
+  N arrived whole. A failed transfer still leaves nothing behind: files wait in a hidden
+  `.windrop-incoming-…` folder and move into place only when the upload ends cleanly.
 
 When a second radio is present, use `sudo iw list | grep -i "active monitor"` rather
 than naming `phy0`. It covers every phy, and a dongle will not be `phy0` beside an

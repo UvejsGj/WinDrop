@@ -35,6 +35,18 @@ public class CpioTests
     }
 
     [Fact]
+    public async Task A_buffered_read_refuses_a_member_over_its_limit()
+    {
+        // The size a buffered read would allocate is the peer's claim, so it is capped;
+        // large members stream through CopyContentToAsync instead.
+        byte[] archive = await BuildAsync(("./photo.jpg", "twenty bytes of data"));
+        var reader = new CpioReader(new MemoryStream(archive));
+        await reader.ReadNextAsync();
+
+        await Assert.ThrowsAsync<CpioFormatException>(() => reader.ReadContentAsync(maxBytes: 10));
+    }
+
+    [Fact]
     public async Task Round_trips_a_single_file()
     {
         byte[] archive = await BuildAsync(("./photo.jpg", "binary-ish content"));
@@ -537,6 +549,88 @@ public class DvZipTests
         BinaryPrimitives.WriteUInt32BigEndian(hostile, DvZip.StoredFlag);
 
         await Assert.ThrowsAsync<DvZipFormatException>(() => DecompressAsync(hostile));
+    }
+
+    [Fact]
+    public async Task A_stored_block_is_described_only_once_it_has_arrived_whole()
+    {
+        // Field sessions read "block N is stored" as "block N arrived": session 9's
+        // diagnosis of where its transfers died rested on it. A streaming decoder could
+        // easily log it at the header instead, which would quietly change what it means.
+        var raw = new byte[0x20000];
+        Random.Shared.NextBytes(raw);
+
+        byte[] stream = [.. ZlibBlock("070701"u8.ToArray()), .. StoredBlock(raw)];
+
+        var log = new List<string>();
+        await Assert.ThrowsAsync<DvZipFormatException>(
+            () => DvZip.DecompressAsync(new MemoryStream(stream[..^1000]), Stream.Null, log.Add));
+
+        Assert.DoesNotContain(log, line => line.Contains("is stored"));
+    }
+
+    [Fact]
+    public async Task Decoding_and_unpacking_a_large_member_takes_bounded_memory()
+    {
+        // 64 MiB of zeros compresses to about 64 KB: the shape of a bomb, and of any large
+        // file. Read through the chain the receiver uses, DVZip into cpio, it must cost a
+        // buffer or two rather than the member. Every read here completes synchronously
+        // from a MemoryStream, so the chain runs on this thread and the counter sees it all.
+        const long size = 64L * 1024 * 1024;
+
+        var compressed = new MemoryStream();
+        await using (var dvzip = new DvZipWriteStream(compressed, blockSize: 1024 * 1024))
+        {
+            var writer = new CpioWriter(dvzip);
+            await writer.WriteFileAsync("./zeros.bin", new ZeroStream(size), size);
+            await writer.CompleteAsync();
+            await dvzip.CompleteAsync();
+        }
+
+        byte[] body = compressed.ToArray();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+
+        var reader = new CpioReader(new DvZipReadStream(new MemoryStream(body)));
+        CpioEntry entry = (await reader.ReadNextAsync())!;
+        long copied = await reader.CopyContentToAsync(Stream.Null);
+        CpioEntry? end = await reader.ReadNextAsync();
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(size, entry.Size);
+        Assert.Equal(size, copied);
+        Assert.Null(end);
+        Assert.True(allocated < 4 * 1024 * 1024, $"Unpacking {size:N0} bytes allocated {allocated:N0}.");
+    }
+
+    /// <summary>Reads as a run of zero bytes of a given length, without holding them.</summary>
+    private sealed class ZeroStream(long length) : Stream
+    {
+        private long _position;
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            int take = (int)Math.Min(buffer.Length, length - _position);
+            buffer[..take].Clear();
+            _position += take;
+            return take;
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default) =>
+            ValueTask.FromResult(Read(buffer.Span));
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => length;
+        public override long Position { get => _position; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }
 

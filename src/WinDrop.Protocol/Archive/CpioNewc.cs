@@ -179,6 +179,7 @@ public sealed class CpioReader(Stream input)
 {
     private long _entryRemaining;
     private long _entryPadding;
+    private byte[]? _copyBuffer;
 
     /// <summary>
     /// Advances to the next member, returning null at the trailer. Any unread content
@@ -285,12 +286,47 @@ public sealed class CpioReader(Stream input)
         return Encoding.UTF8.GetString(nameBytes, 0, nameBytes.Length - 1);
     }
 
-    public async Task<byte[]> ReadContentAsync(CancellationToken ct = default)
+    /// <summary>
+    /// The current member's content as one array, for members known to be small. The size
+    /// comes from the header, which the peer wrote, so it is capped: a header claiming four
+    /// gigabytes would otherwise be a four-gigabyte allocation before any data arrived.
+    /// Anything larger goes through <see cref="CopyContentToAsync"/>.
+    /// </summary>
+    public async Task<byte[]> ReadContentAsync(int maxBytes = 16 * 1024 * 1024, CancellationToken ct = default)
     {
+        if (_entryRemaining > maxBytes)
+            throw new CpioFormatException(
+                $"Member of {_entryRemaining} bytes is over the {maxBytes} byte limit for buffered reads.");
+
         var content = new byte[_entryRemaining];
         await ReadExactlyAsync(content, ct);
         _entryRemaining = 0;
         return content;
+    }
+
+    /// <summary>
+    /// Streams the current member's content into <paramref name="destination"/> through one
+    /// small buffer, however large the member claims to be. Returns the bytes copied.
+    /// </summary>
+    public async Task<long> CopyContentToAsync(Stream destination, CancellationToken ct = default)
+    {
+        long copied = 0;
+
+        while (_entryRemaining > 0)
+        {
+            _copyBuffer ??= new byte[81920];
+
+            int wanted = (int)Math.Min(_copyBuffer.Length, _entryRemaining);
+            int read = await input.ReadAsync(_copyBuffer.AsMemory(0, wanted), ct);
+            if (read == 0) throw new CpioFormatException("Archive truncated.");
+
+            await destination.WriteAsync(_copyBuffer.AsMemory(0, read), ct);
+
+            _entryRemaining -= read;
+            copied += read;
+        }
+
+        return copied;
     }
 
     private static long Hex(string header, int index)
