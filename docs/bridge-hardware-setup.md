@@ -235,16 +235,32 @@ protocol's only real security boundary.
   appearing and then vanishing when the router was pinned to 6. But it only ever occupies
   one or two slots. Channel 44 kept fifteen of sixteen regardless, and a transfer under the
   pinned condition was no faster. No home-network configuration fixes this.
-- **The untried route is channel 44 with a concurrent connection.** This card reports 44 as
-  `IR-CONCURRENT`: transmission allowed there *while the card holds a connection on that
-  channel*. That is where the phone lives. Put the router's 5 GHz band on 44, join Kali to
-  it as a station, then add a monitor interface **beside** the station instead of converting
-  it, and run OWL there: `bash tools/owl-concurrent.sh wlan0 44`. It must not kill
-  NetworkManager — the association is the condition being satisfied. The open unknown is
-  whether `iwlmvm` allows monitor and managed interfaces at once; the script prints the
-  card's valid interface combinations before it tries.
+- **Channel 44 with a concurrent connection does not work — tested and refuted (session 9).**
+  `tools/owl-concurrent.sh` got as far as OWL injecting on 44, but the card goes deaf to
+  AWDL while associated. Its firmware passes a monitor interface only what the station would
+  accept, and AWDL's broadcast action frames are not among it, even with `flags otherbss`.
+  The script stays in the repo as the record of the attempt; there is no reason to run it.
 - **Do not chase channel 149.** In ETSI countries 5745 MHz is not available for this, which
   is exactly what the card's no-IR flag on it reports.
+- **After any unusual mode, reset the card before trusting a channel-6 result.** Session 9
+  left channel 6 deaf until the driver was reloaded, and 40 MHz wide where every good session
+  ran 20 MHz. Check with `iw dev wlan0 info`, and if it is not `width: 20 MHz`, or no peer
+  appears within a few seconds:
+
+  ```bash
+  sudo modprobe -r iwlmvm iwlwifi && sleep 3 && sudo modprobe iwlwifi
+  sudo iw dev wlan0 set channel 6 HT20
+  ```
+
+  The reload may corrupt the desktop display; terminals stay usable.
+- **Overlap is probably not the limit.** During a successful 16 KB/s transfer the phone
+  spent twelve of sixteen slots on channel 6, and the rate did not move. The better-fitting
+  explanation is that this card cannot do active monitor mode, so the phone never gets
+  acknowledgements and retries every frame. That makes the AX211 a working but slow radio,
+  and the next real step a card that passes the active-monitor test in Phase 0 below.
+- **`--early-ask` is now the default.** Passing it is harmless; `--no-early-ask` turns it
+  off. Test once *without* `--yes`: how long iOS will wait while a person decides has never
+  been measured.
 
 When a second radio is present, use `sudo iw list | grep -i "active monitor"` rather
 than naming `phy0`. It covers every phy, and a dongle will not be `phy0` beside an

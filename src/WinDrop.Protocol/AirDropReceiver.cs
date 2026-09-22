@@ -34,13 +34,13 @@ public sealed class AirDropReceiverOptions
     public int MaxAskBodyBytes { get; init; } = 1024 * 1024;
 
     /// <summary>
-    /// Answers /Ask with 200 before reading its body, then asks for consent while the upload
-    /// arrives, writing nothing unless it is granted. Without this, iOS times out the /Ask
-    /// round trip on a slow AWDL link and reports a decline; with it, the same transfers
-    /// succeed. The trade is that an unapproved sender can make us receive and buffer an
-    /// upload before anyone agrees to it. See <see cref="AirDropReceiver"/>.
+    /// Answers /Ask with 200 before reading its body, then asks for consent before reading
+    /// the upload. Without this, iOS times out the /Ask round trip on a slow AWDL link and
+    /// reports a decline; with it, the same transfers succeed, which is why it is on by
+    /// default. The cost is that the sender learns of a refusal at /Upload rather than at
+    /// /Ask. See <see cref="AirDropReceiver"/>.
     /// </summary>
-    public bool EarlyAskReply { get; init; }
+    public bool EarlyAskReply { get; init; } = true;
 }
 
 public sealed record AirDropTransferResult(IReadOnlyList<string> Files, long TotalBytes);
@@ -69,8 +69,8 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
         AirDropTransferResult? result = null;
 
         // Set only in early-ask mode, where the answer to /Ask goes out before anyone has
-        // been asked. It carries the decision that is still being made while the upload
-        // arrives, and /Upload waits on it before writing anything.
+        // been asked. It carries the decision that is still being made, and /Upload waits
+        // on it before reading anything.
         Task<bool>? pendingConsent = null;
 
         while (await connection.ReadRequestHeadAsync(ct) is { } head)
@@ -170,9 +170,9 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
                     if (result is null)
                     {
-                        // Early-ask only: the bytes arrived, the person said no, and nothing
-                        // was written. The refusal still has to reach the sender.
-                        options.Log?.Invoke("-> 401: declined while the upload was arriving; nothing written");
+                        // Early-ask only: the person said no after /Ask was answered, so the
+                        // upload was drained unread. The refusal still has to reach the sender.
+                        options.Log?.Invoke("-> 401: declined after /Ask was answered; nothing read or written");
                         await connection.WriteResponseAsync(401, "Unauthorized", new HttpHeaders(), ReadOnlyMemory<byte>.Empty, ct);
                         break;
                     }
@@ -210,15 +210,22 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
     /// unimplemented or unused here. The win is purely in the timing of the answer.
     ///
     /// Consent therefore moves rather than disappears. The 200 only says "go ahead and
-    /// send"; the decision that matters is whether the bytes are written, and /Upload waits
-    /// on the returned task before extracting anything. Declining leaves nothing on disk and
-    /// answers the upload with 401. What it does cost is that an unapproved sender can make
-    /// us receive and buffer an upload before anyone says yes.
+    /// send"; the decision that matters is whether the upload is read, and /Upload waits on
+    /// the returned task before reading any of it. Declining drains it unbuffered, leaves
+    /// nothing on disk and answers with 401. An unapproved sender gets exactly what it gets
+    /// without early-ask: the /Ask body, capped at <see cref="AirDropReceiverOptions.MaxAskBodyBytes"/>.
+    ///
+    /// The first version read the upload while the prompt was open and decided only before
+    /// the write. That made a stranger able to fill our memory with an archive of any size
+    /// before anyone said yes, which ruled it out as a default.
+    ///
+    /// NOT MEASURED: how long iOS tolerates an upload held back by TCP while a person
+    /// decides. Every field session so far auto-accepted, so none of them waited.
     /// </summary>
     private async Task<(State, AirDropAskRequest?, Task<bool>?)> HandleEarlyAskAsync(
         HttpConnection connection, HttpHeaders headers, CancellationToken ct)
     {
-        options.Log?.Invoke("early-ask: answering 200 before reading the body; consent decides the write");
+        options.Log?.Invoke("early-ask: answering 200 before reading the body; the upload waits for consent");
 
         await RespondPlistAsync(connection, 200, "OK",
             new AirDropReceiverIdentity(options.ComputerName, options.ModelName).ToPlist(), ct);
@@ -280,8 +287,8 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
     }
 
     /// <summary>
-    /// Reads one upload. Returns null when it arrived but was declined, which only happens
-    /// in early-ask mode, where the answer to /Ask preceded the decision.
+    /// Reads one upload. Returns null when it was declined after /Ask had been answered,
+    /// which only happens in early-ask mode, where the answer preceded the decision.
     /// </summary>
     private async Task<AirDropTransferResult?> ReceiveUploadAsync(
         HttpConnection connection,
@@ -301,6 +308,20 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
         // but only as a cross-check we log, never as the deciding vote.
         await using Stream rawBody = connection.OpenBody(headers);
         var limited = new LimitedStream(rawBody, options.MaxUploadBytes);
+
+        // Early-ask only: the decision is taken before a byte of the upload is read, not
+        // after. Reading first would let every unapproved sender make us inflate an
+        // arbitrary archive into memory, and the app serves connections in parallel. Unread,
+        // the upload waits in the socket and TCP holds the sender back, so an unapproved
+        // sender costs no more than the /Ask body it already had to send.
+        if (pendingConsent is not null && !await pendingConsent)
+        {
+            // Drained unbuffered so the connection stays framed and the refusal can reach
+            // the sender as a response rather than a reset.
+            await limited.CopyToAsync(Stream.Null, ct);
+            options.Log?.Invoke("upload discarded unread: declined");
+            return null;
+        }
 
         var prefix = new byte[6];
         int sniffed = 0;
@@ -334,14 +355,6 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
             await AirDropCompression.DecompressAsync(body, archive, isDvZip: !isGzip, options.Log, ct);
 
         archive.Position = 0;
-
-        // The last point at which a decision can still be honoured: everything above is in
-        // memory, and nothing has touched the download directory yet.
-        if (pendingConsent is not null && !await pendingConsent)
-        {
-            options.Log?.Invoke("upload discarded: declined after the body arrived");
-            return null;
-        }
 
         return await ExtractAsync(archive, consented, ct);
     }

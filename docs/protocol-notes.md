@@ -1059,3 +1059,84 @@ the last free idea; if it accepts, the overlap goes from one slot in sixteen to 
    Outstanding for three sessions.
 3. Where between 3.6 MB and 25 MB does a single file stop arriving?
 4. Should early-ask be the default, given it buffers an unapproved upload?
+
+#### 2026-09-21 — REFUTED: a concurrent link on 44 gives transmit, not receive
+
+Session 9, receiver at `5400d1e`, phone on iOS 27.0, router's 5 GHz band fixed on channel
+44 at 80 MHz, Kali associated to it throughout.
+
+**The card half-accepted.** `mon0` was created beside `wlan0` without error, although the
+card's valid interface combinations do not list monitor at all. OWL reported
+`Channel 44 [5220 MHz] is available for frame injection`, a first for this project. No
+peer was ever added, where channel 6 finds one within a second.
+
+**Transmit worked; receive was filtered.** `tcpdump -i mon0 -e` showed only our own
+injected frames, ~27/s, under AWDL's fixed BSSID `00:25:00:ff:94:73`. No other device
+appeared, and no router beacon, though ~11 were due in the window. A second monitor
+interface made with `flags otherbss control` did receive real traffic. But it was only data
+frames inside our own BSSID, plus two protected action frames between us and the router,
+and still no beacons across 5.5 s. While associated, the firmware delivers to a monitor
+interface only what the station itself would accept. AWDL is almost entirely broadcast
+action frames under a foreign BSSID, exactly the category dropped. `otherbss` does not
+override it. Transmit without receive is useless, so this route is closed on the AX211.
+
+**The card does not recover cleanly.** Afterwards, plain channel-6 monitor mode, which
+worked in every earlier session, heard only our own transmissions. `iw dev wlan0 info`
+showed 40 MHz wide at center 2447 where every earlier session ran 20 MHz; `set channel 6
+HT20` fixed the width but not the deafness. Only reloading the driver restored reception
+(`modprobe -r iwlmvm iwlwifi`, then `modprobe iwlwifi`), after which peers appeared at
+once. The reload also corrupted the desktop display, though terminals stayed usable.
+
+**The iOS 27 channel-6 baseline, at last:** one PNG of 1,333,114 bytes in **83 s, ≈16 KB/s**
+from `request POST /Upload` to `upload complete`. That matches iOS 26.6, so iOS 27 changed
+nothing measurable here. All three `/Ask` bodies were 39,316 bytes and took 4.9–5.8 s, and
+early-ask carried every one of them, with no declines.
+
+**Two failed attempts and a failed two-photo share all died after `block 13 is stored`.**
+That is not the decoder. The line is logged only once the whole 128 KiB block has been read
+([DvZip.cs](../src/WinDrop.Protocol/Compression/DvZip.cs)), so block 13 arrived and the
+link died later. Stored blocks were already proven by a 1.79 MB PNG with three of them. One
+inconsistency to settle next time: the successful attempt had 12 blocks, so the failed ones
+cannot have been byte-identical uploads of the same file, as the report believed.
+
+**The finding that matters is a channel sequence taken during the successful transfer:**
+
+```
+19:40:29 peer changed channel sequence to 6,6,6,6,6,6,44,44,6,6,6,6,6,6,44,44
+```
+
+Twelve slots in sixteen on our channel, against one in sixteen in sessions 7 and 8, and
+the rate did not move: 16 KB/s, the same crawl. Session 5 reached ~40 KB/s with the phone
+mostly on 44. If this peer was the phone (it was the active one, but MACs rotate), then
+**channel overlap is not what limits throughput.** That undercuts the reasoning behind
+this session's experiment, and behind any plan to get more overlap.
+
+**The better-fitting explanation is active monitor mode.** OWL asks for it, and the AX211
+refuses it (`owl-session.sh` exists to work around that). In plain monitor mode the card
+receives the phone's unicast frames but never acknowledges them. The phone then counts
+every frame as lost, retries it up to its limit, and adapts its rate downward. The data
+still arrives, since we heard the first copy, but at a rate set by a link the phone
+believes is failing. That predicts a slow rate largely independent of overlap, which is
+what this session shows. It is testable without new hardware: frames the phone retries
+carry the 802.11 Retry bit, so a passive capture during a transfer shows how many are
+repeats.
+
+**Early-ask is now the default,** with one change of design first. The first version read
+and inflated the upload while the prompt was open, deciding only before the write. As a
+default that would let any stranger fill our memory with an archive of any size, once per
+parallel connection in the app. `/Upload` now waits for the decision before reading a
+byte. An unapproved sender gets only the `/Ask` body it already had to send, and TCP holds
+the rest back. A test pins the order: it fails against the old receiver, whose log shows
+the upload inflated before `consent given`.
+
+### Open questions
+
+1. How many of the phone's frames carry the Retry bit during a transfer? If most do, the
+   missing acknowledgements are the throughput limit, and only a card with active monitor
+   mode fixes it.
+2. How long does iOS tolerate an upload held back by TCP while a person decides? Every field
+   session so far auto-accepted with `--yes`, so none has waited. Run once without `--yes`
+   and answer after about 10, 30 and 60 s.
+3. The iOS 27 multi-file baseline (~5.7 MB) is still owed.
+4. Where between 3.6 MB and 25 MB does a single file stop arriving?
+5. Sending **to** an iPhone has never been tried.

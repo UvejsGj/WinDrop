@@ -283,7 +283,67 @@ public class AirDropFlowTests : IDisposable
 
         Assert.Null(result);
         Assert.False(File.Exists(Path.Combine(_downloadDir, "refused.txt")));
-        Assert.Contains(log, line => line.Contains("declined after the body arrived"));
+        Assert.Contains("upload discarded unread: declined", log);
+        Assert.DoesNotContain(log, line => line.StartsWith("upload: ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Early_ask_reads_none_of_the_upload_until_consent_is_given()
+    {
+        // The property that makes early-ask safe as a default. Reading the upload while the
+        // prompt is open would let any stranger make us inflate an archive into memory
+        // before anyone agreed, once per parallel connection. The upload's sniff line is the
+        // first thing that reads its body, so it must come after the decision, never before.
+        var log = new List<string>();
+        void Add(string line) { lock (log) log.Add(line); }
+
+        Harness h = await StartAsync(async (_, ct) =>
+        {
+            // Long enough for the upload to be sitting unread by the time this returns.
+            await Task.Delay(500, ct);
+            Add("consent given");
+            return true;
+        }, log: Add, earlyAsk: true);
+
+        try
+        {
+            var file = AirDropOutgoingFile.FromPath(WriteTempFile("waited.txt", "read only after yes"));
+
+            Assert.True(await h.Session.AskAsync(new AirDropAskRequest(
+                "Sender PC", "Windows", "id", AirDropAskRequest.FinderBundleId, [file.ToEntry()])));
+
+            await h.Session.UploadAsync([file]);
+        }
+        finally
+        {
+            await h.Shutdown();
+        }
+
+        await h.ServerTask.WaitAsync(TimeSpan.FromSeconds(30));
+
+        List<string> seen;
+        lock (log) seen = [.. log];
+
+        int consent = seen.IndexOf("consent given");
+        int firstRead = seen.FindIndex(line => line.StartsWith("upload: ", StringComparison.Ordinal));
+
+        Assert.True(consent >= 0, "the consent handler never ran");
+        Assert.True(firstRead > consent, $"the upload was read before consent: {string.Join(" | ", seen)}");
+        Assert.Equal("read only after yes", await File.ReadAllTextAsync(Path.Combine(_downloadDir, "waited.txt")));
+    }
+
+    [Fact]
+    public void Early_ask_is_on_by_default()
+    {
+        // Pinned because it is a decision, not an accident: without it every iPhone share
+        // over this AWDL link came back "Declined" (sessions 6 and 7).
+        var options = new AirDropReceiverOptions
+        {
+            DownloadDirectory = _downloadDir,
+            ConsentHandler = (_, _) => Task.FromResult(false),
+        };
+
+        Assert.True(options.EarlyAskReply);
     }
 
     [Fact]

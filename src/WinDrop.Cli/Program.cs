@@ -45,17 +45,18 @@ static int PrintUsage()
     Console.WriteLine("""
         WinDrop - an AirDrop implementation for Windows
 
-          windrop receive [--dir <path>] [--port <n>] [--flags <hex>] [--yes] [--early-ask]
+          windrop receive [--dir <path>] [--port <n>] [--flags <hex>] [--yes] [--no-early-ask]
           windrop send [--to <name>| --peer <host>] [--icon <image>] <file> [file...]
           windrop browse                   list nearby peers
 
         Add --bridge <host> to any command to use a Linux box running OWL as the radio.
 
-        Reaches another WinDrop instance, opendrop, or a Mac with
+        On an ordinary network, reaches another WinDrop instance, opendrop, or a Mac with
         `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
 
-        Does NOT reach an iPhone. iOS binds AirDrop discovery to awdl0, a link layer
-        Windows cannot join. See docs/adr-001-transport-selection.md.
+        An iPhone only looks for AirDrop on awdl0, a link layer Windows cannot join.
+        It is reachable from Linux running OWL, directly or through --bridge.
+        See docs/adr-001-transport-selection.md.
         """);
 
     return 1;
@@ -89,12 +90,14 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
 
     Console.WriteLine($"Advertising flags 0x{(int)flags:X2} ({flags})");
 
-    // Answers /Ask before reading its preview-laden body, which is what stops iOS timing the
-    // exchange out on a slow link. The prompt then runs while the upload arrives, and files
-    // are written only if it is accepted.
-    bool earlyAsk = args.Contains("--early-ask", StringComparer.OrdinalIgnoreCase);
-    if (earlyAsk)
-        Console.WriteLine("Early-ask ON: /Ask is answered first; the prompt decides whether the upload is kept.");
+    // Early-ask is the default: /Ask is answered before its preview-laden body is read,
+    // which is what stops iOS timing the exchange out on a slow link, and the upload is not
+    // read until the prompt is answered. --early-ask is still accepted so older runbooks
+    // work; --no-early-ask restores the classic order for comparison.
+    bool earlyAsk = !args.Contains("--no-early-ask", StringComparer.OrdinalIgnoreCase);
+    Console.WriteLine(earlyAsk
+        ? "Early-ask on: /Ask is answered first; the upload is read only once the prompt says yes."
+        : "Early-ask off: /Ask is answered after the prompt, as Apple's own receivers do.");
 
     var receiver = new AirDropReceiver(new AirDropReceiverOptions
     {

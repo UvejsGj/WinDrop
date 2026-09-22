@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Runs OWL on a 5 GHz channel by keeping the card joined to a network on that same channel.
 #
+# REFUTED on the AX211 (session 9, docs/protocol-notes.md): injection on 44 works this way,
+# but while associated the firmware hides AWDL's broadcast frames from the monitor
+# interface, so no peer is ever heard. Kept as the record of the attempt. Afterwards, reload
+# the driver before trusting a channel-6 result; see docs/bridge-hardware-setup.md.
+#
 # The AX211 marks channel 44 IR-CONCURRENT: it may transmit there only while a concurrent
 # connection exists on that channel. Channel 6 needs no such condition, which is why every
 # session so far has used it - and why every session has been slow, because the phone spends

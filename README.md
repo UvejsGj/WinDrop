@@ -13,9 +13,9 @@ protocol. Learning project: understanding over shortcuts, no wrapping of existin
 | 3. Self-signed TLS + minimal HTTP/1.1 | **done** |
 | 4. Discover → Ask → Upload state machine | **done** — verified against opendrop, an independent implementation |
 | 5. DVZip compression + CPIO `newc` archive | **done** — CPIO checked against bsdtar/libarchive |
-| 6. Reaching an iPhone | **blocked, and possibly closed** — needs AWDL hardware, and there is evidence modern iOS no longer accepts non-Apple peers at all. See the addendum in [ADR-001](docs/adr-001-transport-selection.md) |
+| 6. Reaching an iPhone | **working, slowly** — real iPhones on iOS 26.6 and 27.0 have AirDropped files to WinDrop, arriving intact. Over Linux + OWL, at ~16 KB/s on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
 
-145 tests, all passing.
+198 tests, all passing.
 
 ## The one thing to understand first
 
@@ -30,8 +30,36 @@ confirmed by measurement: the captured beacon is 18 bytes, every one of them acc
 for, with no field in which to name a channel, an address or a transport. **The beacon
 cannot redirect a peer anywhere.** It can only mean "wake AWDL".
 
-So everything above the link layer is built, tested and working. The link layer is the
-open question, and it is a hardware question, not a software one.
+So everything above the link layer is built, tested and working, and has been proven
+against a real iPhone. The link layer is what limits it, and that is a hardware question,
+not a software one.
+
+## Where it stands with an iPhone
+
+An iPhone has sent files to WinDrop's receiver running on Linux, with
+[OWL](https://github.com/seemoo-lab/owl) providing `awdl0`. Photos arrived byte-for-byte
+intact on iOS 26.6 and iOS 27.0: one image, several images in one share, and PNGs whose
+upload mixed compressed and stored DVZip blocks. The log of every session is in
+[protocol-notes.md](docs/protocol-notes.md).
+
+| | |
+|---|---|
+| iPhone → WinDrop | **works**, verified on real devices |
+| WinDrop → iPhone | **untested**. The sender is proven only against opendrop |
+| Speed | **15–40 KB/s** on the one card tested (Intel AX211), ~16 KB/s in the latest sessions. A 1.3 MB photo takes ~80 s. Largest to arrive: 3.6 MB as one file, 5.7 MB as a multi-photo share. ~25 MB fails |
+| Phone setting | **Everyone for 10 Minutes** only. Contacts Only requires an Apple-issued identity, which a non-Apple device cannot hold |
+| Windows alone | **cannot reach an iPhone** (see above). The radio has to be Linux: booted directly, or later a bridge |
+
+**The speed is the radio, not the protocol.** The AX211 can only run plain monitor mode,
+not *active* monitor mode, so it never acknowledges the frames the phone sends it. The
+leading explanation for the low rate is that the phone takes every frame as lost, resends
+it, and falls back to its slowest rate. It fits the evidence: the rate did not rise when
+the phone spent most of its schedule on our channel. It is not yet measured directly. Nine sessions of software and configuration changes did not move it, and the
+record of what was tried and why each failed is in the notes.
+
+The fix is an adapter whose Linux driver supports active monitor mode, typically MediaTek
+on the `mt76` driver. [bridge-hardware-setup.md](docs/bridge-hardware-setup.md) has the
+criterion and a one-line test for any card.
 
 ## Running it
 
@@ -43,13 +71,21 @@ dotnet run --project src/WinDrop.Cli -- send path\to\file.jpg
 dotnet run --project src/WinDrop.Cli -- browse
 ```
 
-`receive` takes `--dir <path>` and `--yes` (skip the consent prompt — it is the only
-real security boundary in the protocol, so only for scripted testing).
+`receive` takes `--dir <path>`, `--yes` (skip the consent prompt — it is the only real
+security boundary in the protocol, so only for scripted testing) and `--no-early-ask`.
 
-**Who this reaches:** another WinDrop instance, opendrop, or a Mac started with
-`defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
+**Early-ask is on by default.** Over AWDL the `/Ask` request is slow, mostly the preview
+image iOS attaches, and iOS gives up on it before a normal answer arrives, reporting a
+decline. So the receiver answers `/Ask` first and asks the person afterwards. The upload
+is not read until they say yes, so an unapproved sender gets no more than the `/Ask` body
+it already had to send. `--no-early-ask` restores the classic order.
 
-**Who it does not reach:** an iPhone. See above.
+**Who this reaches from Windows:** another WinDrop instance, opendrop, or a Mac started
+with `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
+
+**Reaching an iPhone** means running the receiver on Linux alongside OWL, which is how
+every iPhone transfer so far was made. On Linux, `awdl0` is an ordinary interface, so the
+CLI works there unchanged. The runbook is [bridge-hardware-setup.md](docs/bridge-hardware-setup.md).
 
 ### Bridge transport
 
@@ -78,9 +114,11 @@ compromised bridge still cannot read a transfer.
 
 **What is verified.** Both directions of the relay, end to end, against the real daemon
 run over an ordinary interface (`--interface eth0`), including an inbound transfer
-driven by opendrop. **What is not:** that `awdl0` behaves like an ordinary interface to
-a socket, that OWL holds the link up under load, and — see the ADR-001 addendum — that a
-current iPhone will talk to a non-Apple peer at all.
+driven by opendrop. **Since settled by the field sessions:** `awdl0` behaves like an
+ordinary interface to a socket, and a current iPhone does talk to a non-Apple peer, which
+the ADR-001 addendum had doubted. **Still not verified:** the bridge itself over `awdl0`,
+since every iPhone transfer so far used the CLI directly on the Linux machine. Also
+whether OWL holds a link long enough for large files, which on this hardware it does not.
 
 ### Building a standalone app
 
@@ -189,9 +227,10 @@ wrong in a way that round-trips through itself perfectly:
   Together they cover the bplist writer and reader, cpio in both variants, gzip in both
   directions, the state machine on both sides, and TLS as client and as server.
 
-One layer still has **no** external validation, and the source says so rather than
-implying otherwise: **DVZip**. No third-party implementation of it exists — opendrop
-only ever speaks gzip — so Apple is the only thing that can ever validate that layer.
+- **DVZip and the receive path, against Apple itself** — no third-party implementation of
+  DVZip exists (opendrop only ever speaks gzip), so real iPhone uploads were the only
+  possible check. They decoded intact, and they are how the stored-block flag was found.
 
-What none of this proves is Apple compatibility: opendrop is a reimplementation, so a
-shared misreading of Apple would pass unnoticed. Only an Apple device settles that.
+opendrop is a reimplementation, so a shared misreading of Apple would pass it unnoticed.
+For **receiving**, an Apple device has now settled that. For **sending** it has not:
+nothing has yet been sent to an iPhone.
