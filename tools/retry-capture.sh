@@ -28,8 +28,15 @@ fi
 echo "== listening on ${INTERFACE} for ${DURATION} s: start the AirDrop now"
 
 # timeout ends tcpdump with status 124, the expected way for this to finish. A snap length
-# of 256 keeps the radiotap and 802.11 headers, which is all the count needs.
-sudo timeout "$DURATION" tcpdump -i "$INTERFACE" -s 256 -w "$CAPTURE" 2>/dev/null || true
+# of 256 keeps the radiotap and 802.11 headers, which is all the count needs. tcpdump's own
+# lines are left visible: "link-type IEEE802_11_RADIO" confirms monitor mode, and "dropped
+# by kernel" says whether the counts below saw everything.
+sudo timeout "$DURATION" tcpdump -i "$INTERFACE" -s 256 -w "$CAPTURE" || true
+
+if [ ! -s "$CAPTURE" ]; then
+  echo "no capture was written; tcpdump's message above says why"
+  exit 1
+fi
 
 echo "== counting"
 # shellcheck disable=SC2086 # OURS is a list of addresses, split on purpose
