@@ -46,16 +46,17 @@ upload mixed compressed and stored DVZip blocks. The log of every session is in
 |---|---|
 | iPhone → WinDrop | **works**, verified on real devices |
 | WinDrop → iPhone | **untested**. The sender is proven only against opendrop |
-| Speed | **15–40 KB/s** on the one card tested (Intel AX211), ~16 KB/s in the latest sessions. A 1.3 MB photo takes ~80 s. Largest to arrive: 3.6 MB as one file, 5.7 MB as a multi-photo share. ~25 MB fails |
+| Speed | **21–27 KB/s** on the one card tested (Intel AX211) at 20 MHz, 15–40 KB/s across all sessions. A 2.5 MB photo takes ~100 s. Largest to arrive: 3.6 MB as one file, 6.4 MB as a four-photo share (267 s). ~25 MB fails |
 | Phone setting | **Everyone for 10 Minutes** only. Contacts Only requires an Apple-issued identity, which a non-Apple device cannot hold |
 | Windows alone | **cannot reach an iPhone** (see above). The radio has to be Linux: booted directly, or later a bridge |
 
-**The speed is the radio, not the protocol.** The AX211 can only run plain monitor mode,
-not *active* monitor mode, so it never acknowledges the frames the phone sends it. The
-leading explanation for the low rate is that the phone takes every frame as lost, resends
-it, and falls back to its slowest rate. It fits the evidence: the rate did not rise when
-the phone spent most of its schedule on our channel. It is not yet measured directly. Nine sessions of software and configuration changes did not move it, and the
-record of what was tried and why each failed is in the notes.
+**The speed is the radio, not the protocol, and that is measured.** The AX211 can only
+run plain monitor mode, not *active* monitor mode, so it never acknowledges the frames the
+phone sends it. The phone takes every frame as lost and sends it again until its retry
+limit. Six captures in session 10 all showed the same thing: 86% of the phone's frames to
+us were resends, and each frame went out about seven times. Nine sessions of software and
+configuration changes could not move the rate, because none of them could make this card
+acknowledge. The record of what was tried and why each failed is in the notes.
 
 The fix is an adapter whose Linux driver supports active monitor mode, typically MediaTek
 on the `mt76` driver. [bridge-hardware-setup.md](docs/bridge-hardware-setup.md) has the

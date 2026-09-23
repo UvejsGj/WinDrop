@@ -253,15 +253,21 @@ protocol's only real security boundary.
   ```
 
   The reload may corrupt the desktop display; terminals stay usable.
-- **Overlap is probably not the limit.** During a successful 16 KB/s transfer the phone
-  spent twelve of sixteen slots on channel 6, and the rate did not move. The better-fitting
-  explanation is that this card cannot do active monitor mode, so the phone never gets
-  acknowledgements and retries every frame. That makes the AX211 a working but slow radio,
-  and the next real step a card that passes the active-monitor test in Phase 0 below.
-  **Measure it before believing it:** with OWL up, run `bash tools/retry-capture.sh` in a
-  third terminal and start a transfer. It only listens, and it reports how many times each
-  of the phone's frames to us was seen. About once means the phone is acknowledged; several
-  times means it is not. It prints counts, never addresses.
+- **The speed limit is the missing acknowledgements — measured (session 10).** This card
+  cannot do active monitor mode, so the phone never gets an ACK. Six captures all showed
+  86% of the phone's frames to us as resends, each frame sent about seven times, at both
+  widths and whatever the outcome. That makes the AX211 a working but slow radio, ~20 KB/s,
+  and the only way past it is a card that passes the active-monitor test in Phase 0 below.
+  To repeat the measurement on any card: with OWL up, run `bash tools/retry-capture.sh` in a
+  third terminal and start a transfer. It only listens and prints counts, never addresses.
+  About one copy per frame means the phone is being acknowledged.
+- **Check the width every session.** The card came up 40 MHz wide on every OWL start in
+  session 10, and nothing succeeded until it was set back to 20 MHz. `owl-session.sh` now
+  does that itself a few seconds after OWL starts, and prints `== width with OWL running:`.
+  Anything but `20 MHz` there: run `sudo iw dev wlan0 set channel 6 HT20` with OWL left
+  running. The script also keeps the screen from blanking, since one share failed while it had.
+- **"Declined" on the phone does not mean a refusal.** iOS shows it when an upload dies
+  part-way, even after the receiver accepted. Read the receiver's log for what happened.
 - **`--early-ask` is now the default.** Passing it is harmless; `--no-early-ask` turns it
   off. Test once *without* `--yes`: how long iOS will wait while a person decides has never
   been measured.

@@ -1140,3 +1140,91 @@ the upload inflated before `consent given`.
 3. The iOS 27 multi-file baseline (~5.7 MB) is still owed.
 4. Where between 3.6 MB and 25 MB does a single file stop arriving?
 5. Sending **to** an iPhone has never been tried.
+
+#### 2026-09-22 — CONFIRMED: the phone is never acknowledged, and resends every frame ~7 times
+
+Session 10, receiver at `0f651d6`, iPhone 13 Pro Max on iOS 27.0, router as in session 9,
+OWL on channel 6. The first session to measure the missing-ACK explanation rather than
+infer it, with `tools/retry-capture.sh`, and the first to run the streaming receiver
+against a real phone.
+
+**Six captures, one answer.** Each ran for the length of a transfer attempt. tcpdump
+reported `link-type IEEE802_11_RADIO` and **0 dropped by kernel** every time, so the counts
+saw every frame the card delivered. Only one transmitter sent data frames to us each time:
+the phone.
+
+| Run | Width | Transfer | Frames to us | Retry bit | Distinct seq | Copies per frame |
+|---|---|---|---|---|---|---|
+| 1 | 40 MHz | /Discover only | 2,060 | 86% | 246 | 8.4 |
+| 2 | 40 MHz | failed | 5,526 | 86% | 819 | 6.7 |
+| 3 | 40 MHz | failed | 5,387 | 86% | 789 | 6.8 |
+| 4 | 40 MHz | failed | 9,205 | 86% | 1,342 | 6.9 |
+| 5 | 20 MHz | success, 102 s | 8,695 | 86% | 1,304 | 6.7 |
+| 6 | 20 MHz | failed on file 4 of 4 | 11,101 | 86% | 1,573 | 7.1 |
+
+Identical at both widths, in successes and failures. About 86% of the phone's frames to us
+are resends, and each frame is sent about seven times: once, then again until the phone's
+retry limit, because no acknowledgement ever comes back. That is the signature of a
+receiver that hears but never acknowledges. It is what plain monitor mode produces, and it
+explains why no configuration change in nine sessions moved the rate. **The throughput
+ceiling is the missing acknowledgements, and only a card with active monitor mode removes
+it.** On this hardware, ~20 KB/s is the answer, not a bug to chase.
+
+**Width: the card ran at 40 MHz on every start.** `iw dev wlan0 info` showed HT40+ at
+center 2447 after each OWL start (07:55, 07:57, 08:00), including after two driver
+reloads, although `owl-session.sh` set the channel without HT40. `set channel 6 HT20` with
+OWL already running fixed it, and it held for the rest of the session. Transfers: **0 of 6
+at 40 MHz** (T1–T6, one on the pre-streaming receiver, which failed the same way), then the
+first three attempts at 20 MHz succeeded (T7, T8, T10; T9 is below). But six in a row failed
+later at 20 MHz, so the width is not the whole story. It was free to rule out, so
+`owl-session.sh` now sets HT20 again five seconds after OWL starts and prints the width it
+ended up with. At 20 MHz uploads ran at **21–27 KB/s**, against 16 KB/s in session 9.
+
+**New record: 6,379,673 bytes, four HEICs, in 267 s** (T10, ~24 KB/s). The upload was 50
+DVZip blocks, 27 zlib and 23 stored, all decoded intact. The same share failed once before
+(T9) while the laptop screen had blanked; the retry kept both screens awake. Two things
+changed at once, so the screen is not proven, but `owl-session.sh` now keeps it awake too.
+
+**The streaming receiver behaved as designed on a real phone.** After every checked
+failure, `/tmp/rx` had no new file and no `.windrop-incoming-…` folder. The directory's
+timestamp moved at each failure, showing the folder was created and then removed. T9 is the
+decisive case: three of its four files had fully arrived when the fourth failed, and none
+was kept. After every success, every file was present at its exact byte count. That
+all-or-nothing rule is deliberately kept, even though it discarded three good photos in T9.
+The phone reported the share as failed, so the person sends it again, as happened with T10.
+Had T9's three been kept, T10 would have left `IMG_xxxx (2).HEIC` beside each of them.
+
+**Consent gating works on a device:** in T12 the upload was not read until the prompt was
+answered, about 14 s later, and the transfer then proceeded. Both prompt runs failed later,
+but so did the `--yes` controls run straight after them. The 30 s, 60 s and decline cases
+were not run.
+
+**Unexplained: six failures in a row after 09:16**, even for 239 KB files, with the prompt
+or `--yes`. Neither turning the phone's Wi-Fi off and on nor a full restart of the laptop
+side (driver reload, OWL, HT20, receiver) cleared it. The width stayed 20 MHz, and `/tmp` was
+3% used. OWL's per-minute send-error counts, which rise and fall with traffic, stayed at the
+level the `/Ask` exchange alone produces, so those uploads stalled almost at once. Three or
+four other Apple devices joined and left the AWDL cluster all session, and the election
+leader moved between the phone and them. That is the one variable nothing controlled. A
+full restart of the phone was not tried.
+
+**Smaller observations:**
+
+- When an upload dies part-way, the phone reports **"Declined"**, even though the receiver
+  had accepted. So a "Declined" on the phone does not mean a refusal.
+- The phone's AWDL sequence cycles 12/16 → 6/16 → 4/16 slots on channel 6 within about
+  5 s of each transfer starting, the same in successes and failures. At rest it is 4/16.
+- A 36.1 MB ProRAW original arrived as a 2,469,203-byte JPEG at full resolution, with EXIF
+  and a lowercase `.jpg`, although every `/Ask` said `convert media formats: no`. HEICs
+  arrived as HEIC. So iOS converts ProRAW by itself, whatever the receiver advertises.
+- At 40 MHz the first `/Ask` was reset mid-body twice (T1, T2); later ones completed.
+- The first upload bytes were `0000002D789C` in every success. Failures showed both
+  that and `0001xxxx789C`, so the opening block does not predict the outcome.
+
+### Open questions
+
+1. What stops the late-session transfers? Test with any Apple devices of your own switched
+   off or away, and try a full restart of the phone when failures start to cluster.
+2. The consent wait at 30 s and 60 s, and what the phone shows on a real decline.
+3. Where between 6.4 MB and ~25 MB does a transfer stop arriving?
+4. Sending **to** an iPhone has never been tried.
