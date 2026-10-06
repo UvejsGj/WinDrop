@@ -242,26 +242,31 @@ public sealed class BridgeTransport : IAirDropTransport
 
         await AnnounceAsync(record, ct);
 
-        return new Advertisement(this);
+        return new Advertisement(this, record);
     }
 
     private Task AnnounceAsync(AirDropServiceRecord record, CancellationToken ct)
     {
         // The host name and address are the bridge's, because the bridge is what a peer
         // will actually connect to. It then pipes those bytes here.
-        string host = $"{record.InstanceName.ToLowerInvariant()}.local";
         IPAddress address = IPAddress.Parse(StripScope(_bridgeAddress));
 
-        DnsMessage announcement = AirDropRecords.BuildAnnouncement(record, host, [address]);
+        DnsMessage announcement = AirDropRecords.BuildAnnouncement(record, HostFor(record), [address]);
         return SendDatagramAsync(announcement, ct);
     }
 
-    private sealed class Advertisement(BridgeTransport owner) : IAsyncDisposable
+    private static string HostFor(AirDropServiceRecord record) => $"{record.InstanceName.ToLowerInvariant()}.local";
+
+    private sealed class Advertisement(BridgeTransport owner, AirDropServiceRecord record) : IAsyncDisposable
     {
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
+            // Stop answering first, so no query can be answered after the goodbye.
             owner._advertised = null;
-            return ValueTask.CompletedTask;
+
+            await AirDropRecords.SendGoodbyeAsync(
+                AirDropRecords.BuildGoodbye(record, HostFor(record)),
+                owner.SendDatagramAsync);
         }
     }
 

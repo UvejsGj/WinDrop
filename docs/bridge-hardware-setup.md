@@ -266,6 +266,14 @@ protocol's only real security boundary.
   does that itself a few seconds after OWL starts, and prints `== width with OWL running:`.
   Anything but `20 MHz` there: run `sudo iw dev wlan0 set channel 6 HT20` with OWL left
   running. The script also keeps the screen from blanking, since one share failed while it had.
+- **No peer within about 30 seconds: reload the driver.** Sessions 9 and 11 both needed it
+  before the phone appeared at all. Stop OWL, run
+  `sudo modprobe -r iwlmvm iwlwifi && sleep 3 && sudo modprobe iwlwifi`, start OWL again.
+- **Stop the receiver before OWL.** On stop, the receiver withdraws itself from the phone's
+  list with an mDNS goodbye, which travels over awdl0. Stop OWL first and it cannot get out,
+  and the phone keeps showing a receiver that is gone.
+- **Location matters.** Session 11, at a different place, got nothing through, and even
+  `/Ask` ran at a third of session 10's speed. Compare results across locations with care.
 - **"Declined" on the phone does not mean a refusal.** iOS shows it when an upload dies
   part-way, even after the receiver accepted. Read the receiver's log for what happened.
 - **`--early-ask` is now the default.** Passing it is harmless; `--no-early-ask` turns it

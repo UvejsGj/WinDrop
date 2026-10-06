@@ -1228,3 +1228,65 @@ full restart of the phone was not tried.
 2. The consent wait at 30 s and 60 s, and what the phone shows on a real decline.
 3. Where between 6.4 MB and ~25 MB does a transfer stop arriving?
 4. Sending **to** an iPhone has never been tried.
+
+#### 2026-10-06 — Session 11: nothing arrived at a new location, which rules several causes out
+
+Session 11, receiver at `ba8541e`, iOS 27.0, at a **different location and router** from
+sessions 9 and 10. The router's 5 GHz band was on channel 153 at -75 dBm; channel 44 was not
+available. The phone was restarted at the start, and the tester's own Apple devices were
+switched off. Only one AWDL peer, the phone, appeared all session. The width line read 20 MHz
+on both OWL starts.
+
+**Zero of five uploads succeeded**, four with `--yes` and one after the prompt. Every failure
+ended `Connection closed before a chunk header`, and the phone showed "Declined". No
+`upload complete` all session. `/tmp/rx` was empty afterwards, with no staging folder left.
+
+**`/Ask` always got through, seven times of seven, but slowly:** 50 KB in about 4 s and 90 KB
+in 9 to 21 s, roughly 4 to 13 KB/s, against 20 to 27 KB/s at session 10's location. A 97 KB
+upload then failed where 90 KB `/Ask` bodies had arrived, so size is not the cause.
+
+**What this rules out.** The failures began with the first send, with one peer and a freshly
+restarted phone. So neither other Apple devices, nor phone state, nor time into the session
+explains them, which were the leading suspects for session 10's late failures. A driver
+reload was needed before the phone appeared at all (as in session 9), and was done minutes
+before the first send.
+
+**What it does not settle.** The location changed, and the link was plainly worse there. The
+code changed too, but only in how names are displayed and saved, and session 10's own late
+failures happened on the code before that. OWL's per-minute send errors came in bursts that
+coincided with failures, but they do not separate failure from success: session 10's
+successful minutes had several thousand each, more than this session's total of 1,111 for
+two sends. They track traffic. The decisive test is the current code at session 10's
+location: working there points at the location, failing there points at something else.
+
+**Consent, still unmeasured.** With the prompt answered after about 20 s, no `/Upload`
+followed, only a series of connection resets, and the phone showed "Sending" throughout.
+After a decline, the phone's `/Upload` was logged and then the link failed, as uploads
+were failing anyway. Neither says anything about waiting or declining while the link
+itself was failing.
+
+**Found and fixed: the stopped receiver lingered on the phone.** The phone listed two
+receivers, both shown as "kali", and only the second was alive. Stopping the receiver
+withdrew nothing; it fell silent, and peers kept its records until they expired. Each start
+picks a new random instance name, so every restart added an entry. The receiver now sends an
+mDNS goodbye on stop: the same service records with a TTL of zero (RFC 6762, section 10.1),
+twice, time-boxed so it cannot hold up a shutdown. Keeping the name the same across
+restarts would also have hidden the duplicates, but a name that never changes is a
+tracking identifier, which is why Apple's devices randomise theirs. The goodbye travels over
+awdl0, so **stop the receiver before OWL**, or it cannot get out.
+
+**Smaller observations:**
+
+- Every `/Discover` connection ended in a reset from the phone. Session 10 showed the same.
+- The phone's AWDL sequence held channel 6 for 2 to 4 of 16 slots at rest and all 16 during
+  transfers, including during a failure.
+- A 2.4 GHz scan at the end found four networks, on 2412, 2437, 2452 and 2457 MHz.
+
+### Open questions
+
+1. Do transfers work again at session 10's location, with the current code? If they do, the
+   location is the variable; if not, compare session 10's build (`0f651d6`) side by side.
+2. The consent wait at 30 s and 60 s, and what the phone shows on a real decline. Needs a
+   link that works first.
+3. Where between 6.4 MB and ~25 MB does a transfer stop arriving?
+4. Sending **to** an iPhone has never been tried.

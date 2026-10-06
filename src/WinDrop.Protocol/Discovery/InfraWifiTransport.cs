@@ -62,15 +62,19 @@ public sealed class InfraWifiTransport : IAirDropTransport
         // browsing will not send a fresh query just because we arrived.
         await _mdns.SendAsync(AirDropRecords.BuildAnnouncement(record, _hostName, LocalAddresses()), ct);
 
-        return new Advertisement(this);
+        return new Advertisement(this, record);
     }
 
-    private sealed class Advertisement(InfraWifiTransport owner) : IAsyncDisposable
+    private sealed class Advertisement(InfraWifiTransport owner, AirDropServiceRecord record) : IAsyncDisposable
     {
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
+            // Stop answering first, so no query can be answered after the goodbye.
             owner._advertised = null;
-            return ValueTask.CompletedTask;
+
+            await AirDropRecords.SendGoodbyeAsync(
+                AirDropRecords.BuildGoodbye(record, owner._hostName),
+                owner._mdns.SendAsync);
         }
     }
 

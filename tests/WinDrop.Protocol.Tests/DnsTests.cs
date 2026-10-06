@@ -255,3 +255,84 @@ public class DnsMessageTests
         Assert.Throws<DnsFormatException>(() => message.ToBytes());
     }
 }
+
+/// <summary>
+/// Withdrawing a service when the receiver stops. Without it, session 11's phone listed the
+/// stopped receiver beside the live one, both as "kali", and only one could be reached.
+/// </summary>
+public class GoodbyeTests
+{
+    private static readonly AirDropServiceRecord Record =
+        new("kali-69c4c4", AirDropServiceRecord.DefaultPort, AirDropReceiverFlags.SupportsDvZip);
+
+    [Fact]
+    public void A_goodbye_withdraws_exactly_what_was_announced()
+    {
+        DnsMessage announcement = DnsMessage.Parse(
+            AirDropRecords.BuildAnnouncement(Record, "kali.local", [IPAddress.Parse("fe80::1")]).ToBytes());
+        DnsMessage goodbye = DnsMessage.Parse(AirDropRecords.BuildGoodbye(Record, "kali.local").ToBytes());
+
+        // The same records, by name and type, so a peer's cache matches and drops them...
+        Assert.Equal(
+            announcement.Answers.Select(r => (r.Name, r.Type)),
+            goodbye.Answers.Select(r => (r.Name, r.Type)));
+
+        // ...with a TTL of zero, which is what makes it a goodbye (RFC 6762, section 10.1).
+        Assert.All(goodbye.Answers, r => Assert.Equal(0u, r.Ttl));
+        Assert.All(announcement.Answers, r => Assert.Equal(120u, r.Ttl));
+
+        // The host's address is not the service's to withdraw.
+        Assert.Empty(goodbye.Additionals);
+        Assert.True(goodbye.IsResponse);
+    }
+
+    [Fact]
+    public async Task A_goodbye_is_sent_twice()
+    {
+        // Multicast is never acknowledged, and over AWDL one datagram is easily lost.
+        var sent = new List<DnsMessage>();
+        DnsMessage goodbye = AirDropRecords.BuildGoodbye(Record, "kali.local");
+
+        await AirDropRecords.SendGoodbyeAsync(goodbye, (message, _) =>
+        {
+            sent.Add(message);
+            return Task.CompletedTask;
+        });
+
+        Assert.Equal(2, sent.Count);
+        Assert.All(sent, message => Assert.Same(goodbye, message));
+    }
+
+    [Theory]
+    [InlineData("io")]
+    [InlineData("disposed")]
+    [InlineData("bridge")]
+    public async Task A_goodbye_that_cannot_be_sent_does_not_fail_the_shutdown(string failure)
+    {
+        // It runs while the program is stopping: the socket may be closed, the bridge gone.
+        Exception error = failure switch
+        {
+            "io" => new IOException("connection reset"),
+            "disposed" => new ObjectDisposedException("socket"),
+            _ => new BridgeException("Control connection is not open."),
+        };
+
+        await AirDropRecords.SendGoodbyeAsync(
+            AirDropRecords.BuildGoodbye(Record, "kali.local"),
+            (_, _) => Task.FromException(error));
+    }
+
+    [Fact]
+    public async Task A_goodbye_that_hangs_is_cut_off()
+    {
+        // A send that never completes must not hold the program open on Ctrl+C.
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+
+        await AirDropRecords.SendGoodbyeAsync(
+            AirDropRecords.BuildGoodbye(Record, "kali.local"),
+            (_, ct) => Task.Delay(Timeout.Infinite, ct),
+            timeoutPerSend: TimeSpan.FromMilliseconds(100));
+
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(5), $"Took {timer.Elapsed}.");
+    }
+}
