@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\WinDrop.Protocol\WinDrop.Protocol.csproj" />
+    <InternalsVisibleTo Include="WinDrop.Protocol.Tests" />
   </ItemGroup>
 </Project>

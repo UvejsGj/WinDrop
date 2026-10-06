@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
+using WinDrop.Protocol;
 using WinDrop.Protocol.Discovery;
 
 namespace WinDrop.App;
@@ -23,7 +24,8 @@ public sealed class PeerViewModel : INotifyPropertyChanged
     public PeerViewModel(AirDropPeer peer)
     {
         Peer = peer;
-        DisplayName = Prettify(peer.InstanceName);
+        // Whatever the peer advertised; cleaned so a name cannot reorder itself into another's.
+        DisplayName = Prettify(PeerText.Printable(peer.InstanceName));
         Initials = InitialsFor(DisplayName);
     }
 

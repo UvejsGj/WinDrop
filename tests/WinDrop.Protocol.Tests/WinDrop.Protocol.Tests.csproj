@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\WinDrop.Protocol\WinDrop.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\WinDrop.Cli\WinDrop.Cli.csproj" />
   </ItemGroup>
 
   <ItemGroup>

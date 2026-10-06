@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
+using WinDrop.Cli;
 using WinDrop.Protocol;
 using WinDrop.Protocol.Discovery;
 using WinDrop.Protocol.Tls;
@@ -38,6 +39,17 @@ catch (OperationCanceledException)
 {
     Console.WriteLine("\nStopped.");
     return 0;
+}
+catch (Exception ex)
+{
+    // Left to the runtime, a failure prints its message raw, and messages quote the peer: a
+    // rejected upload carries the receiver's own reason phrase. The messages are cleaned; the
+    // stack trace is ours and stays, since a tool that hides where it failed is worse.
+    for (Exception? e = ex; e is not null; e = e.InnerException)
+        Console.Error.WriteLine($"{e.GetType().Name}: {PeerText.Printable(e.Message)}");
+
+    Console.Error.WriteLine(ex.StackTrace);
+    return 1;
 }
 
 static int PrintUsage()
@@ -106,9 +118,7 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
         Flags = flags,
         ConsentHandler = autoAccept ? AutoAcceptAsync : PromptAsync,
         EarlyAskReply = earlyAsk,
-        // Timestamped so a transfer's duration can be read straight off the log: from
-        // "request POST /Upload" to "upload complete".
-        Log = line => Console.WriteLine($"  {DateTime.Now:HH:mm:ss} {line}"),
+        Log = line => Console.WriteLine(ConsoleText.LogLine(DateTime.Now, line)),
     });
 
     await using IAirDropTransport transport = CreateTransport(args);
@@ -142,14 +152,17 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
 
             if (result is not null)
             {
+                // The paths end in names the sender chose.
                 Console.WriteLine($"Received {result.Files.Count} file(s), {result.TotalBytes:N0} bytes:");
-                foreach (string file in result.Files) Console.WriteLine($"  {file}");
+                foreach (string file in result.Files) Console.WriteLine($"  {PeerText.Printable(file)}");
                 Console.WriteLine();
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Console.Error.WriteLine($"Connection failed: {ex.Message}");
+            // Exception messages quote what the peer sent: a refused member name, a bad cpio
+            // header, an HTTP line.
+            Console.Error.WriteLine($"Connection failed: {PeerText.Printable(ex.Message)}");
         }
         finally
         {
@@ -165,37 +178,18 @@ static Task<bool> AutoAcceptAsync(AirDropAskRequest request, CancellationToken c
     // --yes exists so the receiver can be driven from a script or a test. It
     // removes the consent prompt, which is the protocol's only real security
     // boundary, so it says so loudly rather than accepting in silence.
-    Console.WriteLine($"Auto-accepting {request.Files.Count} file(s) from '{request.SenderComputerName}' (--yes)");
+    foreach (string line in ConsoleText.DescribeRequest(request, autoAccepted: true))
+        Console.WriteLine(line);
 
-    // Listed in full even with no prompt. Types and names are evidence too: a HEIC sent
-    // unconverted in one share and converted to JPEG in another went unrecorded because
-    // this mode used to print only a count.
-    foreach (AirDropFileEntry file in request.Files)
-        Console.WriteLine($"  {file.FileName}  [{file.FileType}]");
-
-    DescribePreview(request);
     return Task.FromResult(true);
-}
-
-static void DescribePreview(AirDropAskRequest request)
-{
-    // Only the size and the signature. Decoding it would mean pointing an image codec at
-    // a stranger's bytes from a console tool that has nothing to show them on.
-    if (request.FileIcon is { } icon)
-        Console.WriteLine($"  preview: {icon.Length:N0} bytes, {PreviewImage.Sniff(icon)}");
-
-    Console.WriteLine($"  convert media formats: {(request.ConvertMediaFormats ? "yes" : "no")}");
 }
 
 static Task<bool> PromptAsync(AirDropAskRequest request, CancellationToken ct)
 {
     Console.WriteLine();
-    Console.WriteLine($"'{request.SenderComputerName}' ({request.SenderModelName}) wants to send:");
 
-    foreach (AirDropFileEntry file in request.Files)
-        Console.WriteLine($"  {file.FileName}  [{file.FileType}]");
-
-    DescribePreview(request);
+    foreach (string line in ConsoleText.DescribeRequest(request, autoAccepted: false))
+        Console.WriteLine(line);
 
     Console.Write("Accept? [y/N] ");
     string? answer = Console.ReadLine();
@@ -221,7 +215,8 @@ static async Task<int> BrowseAsync(string[] args, CancellationToken ct)
     {
         await foreach (AirDropPeer peer in transport.BrowseAsync(window.Token))
         {
-            Console.WriteLine($"  {peer}");
+            // The instance name is whatever the peer advertised over mDNS.
+            Console.WriteLine($"  {PeerText.Printable(peer.ToString())}");
             found++;
         }
     }
@@ -359,7 +354,7 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
                 if (filter is not null
                     && !peer.InstanceName.Contains(filter, StringComparison.OrdinalIgnoreCase))
                 {
-                    Console.WriteLine($"  skipping {peer.InstanceName} (does not match --to {filter})");
+                    Console.WriteLine($"  skipping {PeerText.Printable(peer.InstanceName)} (does not match --to {filter})");
                     continue;
                 }
 
@@ -376,7 +371,7 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
         return 1;
     }
 
-    Console.WriteLine($"Sending to {target}");
+    Console.WriteLine($"Sending to {PeerText.Printable(target.ToString())}");
 
     var files = paths.Select(AirDropOutgoingFile.FromPath).ToList();
 
@@ -388,7 +383,7 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
 
     AirDropReceiverIdentity? identity = await session.DiscoverAsync(ct);
     if (identity is not null)
-        Console.WriteLine($"Peer identifies as '{identity.ComputerName}' ({identity.ModelName})");
+        Console.WriteLine($"Peer identifies as '{PeerText.Printable(identity.ComputerName)}' ({PeerText.Printable(identity.ModelName)})");
 
     var request = new AirDropAskRequest(
         Environment.MachineName,

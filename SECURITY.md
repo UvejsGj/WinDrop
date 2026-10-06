@@ -39,8 +39,10 @@ The receiver depends on a few boundaries. Getting past any of them is a vulnerab
 - **Previews.** The app decodes only JPEG and PNG previews, through named decoders, after
   checking the image's dimensions. Getting any other format, or an oversized image, to a
   decoder counts.
-- **Terminal output.** Names and other text from a peer must not be able to carry escape
-  sequences to a terminal.
+- **Displayed text.** Names and other text from a peer, including exception messages that
+  quote it, must not be able to carry escape sequences or carriage returns to a terminal,
+  or disguise themselves with direction overrides, in the CLI or the app. Everything passes
+  through `PeerText.Printable` on its way to a person.
 
 ## Not in scope
 

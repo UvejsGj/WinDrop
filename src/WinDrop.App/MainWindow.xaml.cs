@@ -260,7 +260,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await Dispatcher.InvokeAsync(() => SetStatus($"Transfer failed: {ex.Message}"));
+            await Dispatcher.InvokeAsync(() => SetStatus($"Transfer failed: {PeerText.Printable(ex.Message)}"));
         }
         finally
         {
@@ -290,9 +290,12 @@ public partial class MainWindow : Window
             {
                 _pendingConsent = completion;
 
-                string names = string.Join(", ", request.Files.Select(f => f.FileName));
+                // Every name here is the sender's choice. WPF acts on no escape sequences, but
+                // it does honour direction overrides, which would let "photo", U+202E,
+                // "gpj.exe" sit on this sheet reading as "photoexe.jpg".
+                string names = string.Join(", ", request.Files.Select(f => PeerText.Printable(f.FileName)));
 
-                ConsentTitle.Text = request.SenderComputerName;
+                ConsentTitle.Text = PeerText.Printable(request.SenderComputerName);
                 ConsentDetail.Text = request.Files.Count == 1
                     ? $"wants to share “{names}”"
                     : $"wants to share {request.Files.Count} items · {names}";
@@ -448,7 +451,7 @@ public partial class MainWindow : Window
             peer.State = PeerState.Failed;
             peer.Status = "Failed";
             peer.Progress = 0;
-            SetStatus($"Send failed: {ex.Message}");
+            SetStatus($"Send failed: {PeerText.Printable(ex.Message)}");
         }
     }
 

@@ -827,7 +827,27 @@ public class ArchiveRootTests : IDisposable
     [Fact]
     public void Logged_names_cannot_carry_terminal_escapes()
     {
-        Assert.Equal("a?[2Jb.txt", AirDropReceiver.Printable("a[2Jb.txt"));
+        Assert.Equal("a?[2Jb.txt", PeerText.Printable("a[2Jb.txt"));
+    }
+
+    [Fact]
+    public async Task The_name_a_duplicate_is_saved_under_is_logged_clean()
+    {
+        // The "saved as" line used to print the renamed file raw, though the member name
+        // beside it was cleaned. A direction override is legal in a Windows file name, so it
+        // reaches the disk, and the log is where a person would read it.
+        MemoryStream archive = await ArchiveAsync(async writer =>
+        {
+            await writer.WriteFileAsync("./photo‮gpj.exe", "first"u8.ToArray());
+            await writer.WriteFileAsync("./photo‮gpj.exe", "second"u8.ToArray());
+        });
+
+        var log = new List<string>();
+        await Receiver(log).ExtractAsync(archive, null, default);
+
+        string savedAs = Assert.Single(log, line => line.Contains("saved as"));
+        Assert.Contains("saved as photo?gpj (2).exe", savedAs);
+        Assert.DoesNotContain('‮', savedAs);
     }
 
     [Fact]

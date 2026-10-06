@@ -101,7 +101,7 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
             // Logged as it arrives, not when the connection ends. A peer can keep the
             // connection open after a transfer, and a CLI that reports only at close then
             // looks idle while requests are still coming in.
-            options.Log?.Invoke($"request {Printable(head.Method)} {Printable(path)} ({DescribeBody(head.Headers)})");
+            options.Log?.Invoke($"request {PeerText.Printable(head.Method)} {PeerText.Printable(path)} ({DescribeBody(head.Headers)})");
 
             switch (path)
             {
@@ -281,7 +281,7 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            options.Log?.Invoke($"early-ask: body read ended after {timer.ElapsedMilliseconds:N0} ms: {ex.Message}");
+            options.Log?.Invoke($"early-ask: body read ended after {timer.ElapsedMilliseconds:N0} ms: {PeerText.Printable(ex.Message)}");
         }
 
         // No readable request means nothing to put in front of a person, so nothing may be
@@ -419,8 +419,8 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
             while (await reader.ReadNextAsync(ct) is { } entry)
             {
                 options.Log?.Invoke(entry.IsDirectory
-                    ? $"member {Printable(entry.Name)} (directory)"
-                    : $"member {Printable(entry.Name)} ({entry.Size:N0} bytes)");
+                    ? $"member {PeerText.Printable(entry.Name)} (directory)"
+                    : $"member {PeerText.Printable(entry.Name)} ({entry.Size:N0} bytes)");
 
                 // iOS 26.6 opens its upload archive with a directory member named ".": the
                 // root the archive was built from (observed 2026-09-13). That is the download
@@ -438,7 +438,7 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
                 // mismatch is reported rather than refused. Reported, though: a person
                 // agreeing to these files is the only thing standing behind writing them.
                 if (consented is not null && !IsConsented(consented, entry.Name))
-                    options.Log?.Invoke($"member {Printable(entry.Name)} was not in the accepted /Ask list");
+                    options.Log?.Invoke($"member {PeerText.Printable(entry.Name)} was not in the accepted /Ask list");
 
                 // Resolved before any content is read, so a member aimed outside the
                 // download directory is refused without a byte of it touching the disk.
@@ -540,7 +540,7 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
             if (free != member.Destination)
             {
                 options.Log?.Invoke(
-                    $"member {Printable(member.Name)} saved as {Path.GetFileName(free)}; that name was taken");
+                    $"member {PeerText.Printable(member.Name)} saved as {PeerText.Printable(Path.GetFileName(free))}; that name was taken");
             }
 
             return free;
@@ -566,7 +566,7 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            options.Log?.Invoke($"could not remove {path}: {ex.Message}");
+            options.Log?.Invoke($"could not remove {PeerText.Printable(path)}: {PeerText.Printable(ex.Message)}");
         }
     }
 
@@ -585,14 +585,6 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
         return relative.TrimEnd('/') is "" or ".";
     }
-
-    /// <summary>
-    /// Member names come from an unauthenticated peer and end up in a terminal. Control
-    /// characters are replaced, so a name cannot carry escape sequences to whoever reads
-    /// the log.
-    /// </summary>
-    internal static string Printable(string text) =>
-        new(text.Select(c => char.IsControl(c) ? '?' : c).ToArray());
 
     private static string DescribeBody(HttpHeaders headers) =>
         headers.IsChunked ? "chunked"

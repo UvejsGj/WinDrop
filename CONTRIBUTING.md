@@ -39,9 +39,9 @@ fixtures, which are committed. On Windows, see the README's note on Smart App Co
 - **Comments explain why.** The code comments the reasoning and the evidence behind
   decisions that are not obvious, not what the next line does. Please match that.
 - **The security boundaries stay intact.** Consent before anything is read or written,
-  `ResolveSafePath` for every member name, the resource limits, and sanitised terminal
-  output. A change that touches any of them needs a test that fails without it. See
-  [SECURITY.md](SECURITY.md).
+  `ResolveSafePath` for every member name, the resource limits, and `PeerText.Printable`
+  on any peer text shown to a person. A change that touches any of them needs a test that
+  fails without it. See [SECURITY.md](SECURITY.md).
 
 ## Tests with real devices
 
