@@ -235,3 +235,9 @@ wrong in a way that round-trips through itself perfectly:
 opendrop is a reimplementation, so a shared misreading of Apple would pass it unnoticed.
 For **receiving**, an Apple device has now settled that. For **sending** it has not:
 nothing has yet been sent to an iPhone.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Results from real Apple devices are especially
+welcome, working or not; there is an issue template for them. Report security problems
+privately, as [SECURITY.md](SECURITY.md) describes, not in a public issue.

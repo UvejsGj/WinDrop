@@ -1,0 +1,20 @@
+name: Idea or improvement
+description: Suggest a feature or a change.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would it solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: How it could work
+      description: Your approach, if you have one.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: If it depends on how Apple's implementation behaves, how do you know? A capture, a device test, or a write-up.

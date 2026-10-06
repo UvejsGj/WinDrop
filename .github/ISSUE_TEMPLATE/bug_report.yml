@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in WinDrop does not work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. If this could be a security problem, please do not file it here: see [SECURITY.md](https://github.com/UvejsGj/WinDrop/blob/main/SECURITY.md).
+
+        **Redact before pasting logs.** This repository is public. Remove device names, MAC addresses, UUIDs, IP addresses, and file names beyond the `IMG_xxxx` pattern.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which part
+      options:
+        - Windows app
+        - CLI on Windows
+        - CLI on Linux with OWL
+        - Linux bridge (windrop-bridge.py)
+        - Protocol library
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: peer
+    attributes:
+      label: The other device
+      description: What WinDrop was talking to, with its OS version.
+      placeholder: "e.g. iPhone 13 Pro Max on iOS 27.0, another WinDrop, opendrop"
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: The output of `git log --oneline -1`.
+      placeholder: "e.g. 5a5dc52"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The receiver's or sender's timestamped output around the problem, redacted.
+      render: text

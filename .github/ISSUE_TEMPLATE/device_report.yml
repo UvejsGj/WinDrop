@@ -1,0 +1,60 @@
+name: Device test result
+description: How WinDrop behaved with a real Apple device, whether it worked or not.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Results from real devices are the only way this project is checked against Apple's own implementation, so failures are as useful as successes. [docs/bridge-hardware-setup.md](https://github.com/UvejsGj/WinDrop/blob/main/docs/bridge-hardware-setup.md) covers the setup.
+
+        **Redact before pasting logs.** This repository is public. Remove device names, MAC addresses, UUIDs, IP addresses, and file names beyond the `IMG_xxxx` pattern.
+  - type: input
+    id: device
+    attributes:
+      label: Apple device
+      placeholder: "e.g. iPhone 13 Pro Max"
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version
+      placeholder: "e.g. iOS 27.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: direction
+    attributes:
+      label: Direction
+      options:
+        - Apple device to WinDrop
+        - WinDrop to Apple device
+    validations:
+      required: true
+  - type: input
+    id: radio
+    attributes:
+      label: Radio setup
+      description: The Wi-Fi card, and how AWDL was provided.
+      placeholder: "e.g. Intel AX211, Kali Live, OWL on channel 6 at 20 MHz"
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: The output of `git log --oneline -1`.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Result
+      description: What was sent (type, size, how many), how long it took, and whether it arrived intact.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Relevant receiver or sender output, and any OWL lines that matter, redacted.
+      render: text
