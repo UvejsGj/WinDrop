@@ -709,6 +709,23 @@ public class PathTraversalTests
     }
 
     [Theory]
+    [InlineData("./photo‮gpj.exe", "photo_gpj.exe")]
+    [InlineData("./dir⁦/x‏.txt", "dir_/x_.txt")]
+    [InlineData("../‮", null)]                       // made safe, and still refused for escaping
+    [InlineData("‮/../../escape.txt", null)]
+    public void Saved_names_are_made_safe_before_containment_is_judged(string name, string? expected)
+    {
+        if (expected is null)
+        {
+            Assert.Throws<AirDropHttpException>(() => AirDropReceiver.ResolveSafePath(Root, name));
+            return;
+        }
+
+        string resolved = AirDropReceiver.ResolveSafePath(Root, name);
+        Assert.Equal(expected, Path.GetRelativePath(Root, resolved).Replace('\\', '/'));
+    }
+
+    [Theory]
     [InlineData("./photo.jpg", "photo.jpg")]
     [InlineData("photo.jpg", "photo.jpg")]
     [InlineData("./deeper/photo.jpg", "deeper/photo.jpg")]
@@ -834,8 +851,8 @@ public class ArchiveRootTests : IDisposable
     public async Task The_name_a_duplicate_is_saved_under_is_logged_clean()
     {
         // The "saved as" line used to print the renamed file raw, though the member name
-        // beside it was cleaned. A direction override is legal in a Windows file name, so it
-        // reaches the disk, and the log is where a person would read it.
+        // beside it was cleaned. The override no longer reaches the disk at all, so this now
+        // also pins that a disguised name and its duplicate both land under the safe name.
         MemoryStream archive = await ArchiveAsync(async writer =>
         {
             await writer.WriteFileAsync("./photo‮gpj.exe", "first"u8.ToArray());
@@ -846,8 +863,89 @@ public class ArchiveRootTests : IDisposable
         await Receiver(log).ExtractAsync(archive, null, default);
 
         string savedAs = Assert.Single(log, line => line.Contains("saved as"));
-        Assert.Contains("saved as photo?gpj (2).exe", savedAs);
+        Assert.Contains("saved as photo_gpj (2).exe", savedAs);
         Assert.DoesNotContain('‮', savedAs);
+        Assert.Equal("first", await File.ReadAllTextAsync(Path.Combine(_root, "photo_gpj.exe")));
+        Assert.Equal("second", await File.ReadAllTextAsync(Path.Combine(_root, "photo_gpj (2).exe")));
+    }
+
+    [Fact]
+    public async Task A_direction_override_cannot_disguise_a_file_on_disk()
+    {
+        // "photo", U+202E, "gpj.exe" displays as "photoexe.jpg" in Explorer. Saved with the
+        // override replaced, the real extension is the one anyone sees.
+        MemoryStream archive = await ArchiveAsync(writer =>
+            writer.WriteFileAsync("./photo‮gpj.exe", "not a photo"u8.ToArray()));
+
+        var log = new List<string>();
+        AirDropTransferResult result = await Receiver(log).ExtractAsync(archive, null, default);
+
+        Assert.Equal(Path.Combine(_root, "photo_gpj.exe"), Assert.Single(result.Files));
+        Assert.Equal("not a photo", await File.ReadAllTextAsync(result.Files[0]));
+        Assert.Contains(log, line => line.Contains("is named photo_gpj.exe on disk"));
+        Assert.DoesNotContain(AirDropFlowTests.LeftBehind(_root), path => path.Contains('‮'));
+    }
+
+    [Fact]
+    public async Task A_direction_override_in_a_directory_name_is_replaced_too()
+    {
+        MemoryStream archive = await ArchiveAsync(async writer =>
+        {
+            await writer.WriteDirectoryAsync("./Album⁧x");
+            await writer.WriteFileAsync("./Album⁧x/IMG_0001.JPG", "jpeg"u8.ToArray());
+        });
+
+        AirDropTransferResult result = await Receiver().ExtractAsync(archive, null, default);
+
+        Assert.Equal(Path.Combine(_root, "Album_x", "IMG_0001.JPG"), Assert.Single(result.Files));
+        Assert.DoesNotContain(AirDropFlowTests.LeftBehind(_root), path => path.Contains('⁧'));
+    }
+
+    [Theory]
+    [InlineData("./report‏.pdf", "report_.pdf")]       // a lone right-to-left mark
+    [InlineData("./a\u001b[2Jb.txt", "a_[2Jb.txt")]         // an escape sequence, legal on Linux
+    [InlineData("./line\rbreak.txt", "line_break.txt")]     // a carriage return
+    public async Task Control_and_direction_characters_are_replaced_in_saved_names(string member, string saved)
+    {
+        MemoryStream archive = await ArchiveAsync(writer => writer.WriteFileAsync(member, "x"u8.ToArray()));
+
+        AirDropTransferResult result = await Receiver().ExtractAsync(archive, null, default);
+
+        Assert.Equal(Path.Combine(_root, saved), Assert.Single(result.Files));
+    }
+
+    [Theory]
+    [InlineData("./משפחה.png")]
+    [InlineData("./صورة العائلة.jpg")]
+    [InlineData("./Ålesund café.heic")]
+    public async Task Ordinary_names_in_any_script_are_saved_unchanged(string member)
+    {
+        // Right-to-left letters are text, not formatting. Only the invisible characters that
+        // reorder text are replaced, and a name made of real letters keeps every one.
+        MemoryStream archive = await ArchiveAsync(writer => writer.WriteFileAsync(member, "x"u8.ToArray()));
+
+        var log = new List<string>();
+        AirDropTransferResult result = await Receiver(log).ExtractAsync(archive, null, default);
+
+        Assert.Equal(Path.Combine(_root, member[2..]), Assert.Single(result.Files));
+        Assert.DoesNotContain(log, line => line.Contains("on disk"));
+    }
+
+    [Fact]
+    public async Task A_disguised_name_is_still_matched_against_the_consent_it_was_given()
+    {
+        // Consent is checked against the names as sent, before they are made safe, so a
+        // file listed in /Ask under its real name is not reported as unlisted.
+        var consented = new AirDropAskRequest("Phone", "iPhone", "id", AirDropAskRequest.FinderBundleId,
+            [AirDropFileEntry.ForFile("photo‮gpj.exe")]);
+
+        MemoryStream archive = await ArchiveAsync(writer =>
+            writer.WriteFileAsync("./photo‮gpj.exe", "x"u8.ToArray()));
+
+        var log = new List<string>();
+        await Receiver(log).ExtractAsync(archive, consented, default);
+
+        Assert.DoesNotContain(log, line => line.Contains("was not in the accepted /Ask list"));
     }
 
     [Fact]

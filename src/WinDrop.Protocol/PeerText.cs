@@ -25,7 +25,11 @@ public static class PeerText
     public static string Printable(string text) =>
         text.Any(IsUnsafe) ? new string(text.Select(c => IsUnsafe(c) ? '?' : c).ToArray()) : text;
 
-    private static bool IsUnsafe(char c) =>
+    /// <summary>
+    /// The characters this class replaces. Shared with the receiver, which keeps the same ones
+    /// out of the names it saves files under, so what is shown and what is saved cannot drift.
+    /// </summary>
+    internal static bool IsUnsafe(char c) =>
         char.IsControl(c) // C0, DEL and C1, which include ESC, CR, LF and the one-byte CSI
         || c is '؜'  // Arabic letter mark
         || c is '‎' or '‏'                // left-to-right and right-to-left marks

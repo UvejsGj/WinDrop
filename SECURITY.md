@@ -29,7 +29,10 @@ The receiver depends on a few boundaries. Getting past any of them is a vulnerab
   `/Upload` without an accepted `/Ask` on the same connection must be refused, and with
   early-ask (the default) the upload must not even be read before the decision.
 - **Paths.** Archive member names come from the sender. A member that lands outside the
-  download directory, or replaces a file that was already there, is a vulnerability.
+  download directory, or replaces a file that was already there, is a vulnerability. So is
+  a saved name that disguises itself: control and direction-formatting characters are
+  replaced with `_` before a name reaches the disk, so that, for example, "photo", U+202E,
+  "gpj.exe" cannot sit in a folder looking like `photoexe.jpg`.
 - **Resource limits.** The receiver bounds the upload as sent (`MaxUploadBytes`), what it
   unpacks to (`MaxExtractedBytes`), how many members an archive holds (`MaxArchiveMembers`)
   and the `/Ask` body (`MaxAskBodyBytes`). An input that exhausts memory or disk anyway, or

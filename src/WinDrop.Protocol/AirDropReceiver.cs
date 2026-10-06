@@ -437,12 +437,23 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
                 // members outside that list, the root skipped above among them, so a
                 // mismatch is reported rather than refused. Reported, though: a person
                 // agreeing to these files is the only thing standing behind writing them.
+                // It cannot be raised at the prompt instead: the archive is read only after
+                // the decision, so its members are unknown while the person is deciding.
+                // Matched on the names as sent, before SafeName touches them.
                 if (consented is not null && !IsConsented(consented, entry.Name))
                     options.Log?.Invoke($"member {PeerText.Printable(entry.Name)} was not in the accepted /Ask list");
 
                 // Resolved before any content is read, so a member aimed outside the
                 // download directory is refused without a byte of it touching the disk.
                 string destination = ResolveSafePath(options.DownloadDirectory, entry.Name);
+
+                if (SafeName(entry.Name) != entry.Name)
+                {
+                    options.Log?.Invoke(
+                        $"member {PeerText.Printable(entry.Name)} is named " +
+                        $"{Path.GetRelativePath(options.DownloadDirectory, destination)} on disk; " +
+                        "control or direction characters were replaced");
+                }
 
                 if (entry.IsDirectory)
                 {
@@ -634,13 +645,16 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
     /// </summary>
     internal static string ResolveSafePath(string root, string entryName)
     {
+        // The rest of this keeps a name inside the download directory; SafeName keeps it from
+        // lying once it is there. Applied before the containment checks, so they judge the
+        // name that will actually be used.
         if (string.IsNullOrWhiteSpace(entryName))
             throw new AirDropHttpException("Archive member has an empty name.");
 
         if (entryName.Contains('\0'))
             throw new AirDropHttpException("Archive member name contains a NUL.");
 
-        string relative = entryName.Replace('\\', '/');
+        string relative = SafeName(entryName.Replace('\\', '/'));
 
         while (relative.StartsWith("./", StringComparison.Ordinal))
             relative = relative[2..];
@@ -669,6 +683,27 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
         return candidate;
     }
+
+    /// <summary>
+    /// A member name with every control and direction-formatting character replaced by '_'.
+    ///
+    /// The danger outlives the transfer. A file saved as "photo", U+202E, "gpj.exe" is shown by
+    /// Explorer, and by most file managers, as "photoexe.jpg": a program posing as a photo,
+    /// waiting for whoever opens the folder later. Consent cannot be relied on to catch it,
+    /// because the archive may hold members the /Ask never listed. On Linux, where the CLI
+    /// runs over OWL, control characters are legal in names too, and an escape sequence in a
+    /// file name reaches any terminal that lists the directory.
+    ///
+    /// Replaced rather than refused. Refusing would fail a whole share over a character a
+    /// legitimate name can carry: Hebrew and Arabic file names sometimes hold an invisible
+    /// right-to-left mark. Replacing costs that sender one visible underscore, and costs a
+    /// disguise everything, since the true extension is then the one on show. '_' rather than
+    /// the '?' used on screen, because Windows forbids '?' in a file name. The characters are
+    /// the ones <see cref="PeerText.Printable"/> replaces, so the name shown and the name saved
+    /// are judged the same way.
+    /// </summary>
+    internal static string SafeName(string name) =>
+        name.Any(PeerText.IsUnsafe) ? new string(name.Select(c => PeerText.IsUnsafe(c) ? '_' : c).ToArray()) : name;
 
     private static async Task RespondPlistAsync(
         HttpConnection connection,
