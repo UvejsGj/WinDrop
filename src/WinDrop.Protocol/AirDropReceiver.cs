@@ -192,11 +192,22 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
                     if (result is null)
                     {
-                        // Early-ask only: the person said no after /Ask was answered, so the
-                        // upload was drained unread. The refusal still has to reach the sender.
-                        options.Log?.Invoke("-> 401: declined after /Ask was answered; nothing read or written");
-                        await connection.WriteResponseAsync(401, "Unauthorized", new HttpHeaders(), ReadOnlyMemory<byte>.Empty, ct);
-                        break;
+                        // Early-ask only: the person said no after /Ask was answered. The upload
+                        // body is still unread in the connection, so no further request can be
+                        // framed after it: answer, then end the connection.
+                        options.Log?.Invoke("-> 401: declined after /Ask was answered; nothing read or written; closing");
+
+                        try
+                        {
+                            await connection.WriteResponseAsync(401, "Unauthorized", new HttpHeaders(), ReadOnlyMemory<byte>.Empty, ct);
+                        }
+                        catch (IOException)
+                        {
+                            // A sender already gone needs no refusal; the close below tells
+                            // one that is still sending.
+                        }
+
+                        return null;
                     }
 
                     options.Log?.Invoke($"upload complete: {result.Files.Count} file(s), {result.TotalBytes:N0} bytes -> 200");
@@ -280,8 +291,9 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
     ///
     /// Consent therefore moves rather than disappears. The 200 only says "go ahead and
     /// send"; the decision that matters is whether the upload is read, and /Upload waits on
-    /// the returned task before reading any of it. Declining drains it unbuffered, leaves
-    /// nothing on disk and answers with 401. An unapproved sender gets exactly what it gets
+    /// the returned task before reading any of it. Declining refuses it unread: a 401 the
+    /// moment /Upload arrives, then the connection closes, and nothing reaches the disk. An
+    /// unapproved sender gets exactly what it gets
     /// without early-ask: the /Ask body, capped at <see cref="AirDropReceiverOptions.MaxAskBodyBytes"/>.
     ///
     /// The first version read the upload while the prompt was open and decided only before
@@ -385,10 +397,14 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
         // sender costs no more than the /Ask body it already had to send.
         if (pendingConsent is not null && !await pendingConsent)
         {
-            // Drained unbuffered so the connection stays framed and the refusal can reach
-            // the sender as a response rather than a reset.
-            await limited.CopyToAsync(Stream.Null, ct);
-            options.Log?.Invoke("upload discarded unread: declined");
+            // Refused unread, and the caller ends the connection. This used to drain the
+            // upload first, so the connection stayed framed and the refusal could arrive as a
+            // proper response. Over AWDL that meant receiving a whole declined file at a few
+            // KB/s: in session 13 the phone showed "Sending" for about three minutes after a
+            // decline, and the drain died with the link, leaving a decline that read in the log
+            // exactly like a failed upload. A 401 sent at once, then a close, tells the sender
+            // in seconds and takes nothing from it.
+            options.Log?.Invoke("declined: the upload is refused unread");
             return null;
         }
 

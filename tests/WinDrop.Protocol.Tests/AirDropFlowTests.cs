@@ -283,8 +283,10 @@ public class AirDropFlowTests : IDisposable
             Assert.True(await h.Session.AskAsync(new AirDropAskRequest(
                 "Sender PC", "Windows", "id", AirDropAskRequest.FinderBundleId, [file.ToEntry()])));
 
-            // The refusal reaches the sender as a rejected upload instead.
-            await Assert.ThrowsAsync<AirDropHttpException>(() => h.Session.UploadAsync([file]));
+            // The refusal reaches the sender at /Upload instead: as the 401, or as the close
+            // that follows it, whichever the sender meets first while it is still writing.
+            Exception? refusal = await Record.ExceptionAsync(() => h.Session.UploadAsync([file]));
+            Assert.True(refusal is AirDropHttpException or IOException, $"Expected a refusal, got {refusal?.GetType().Name ?? "success"}.");
         }
         finally
         {
@@ -295,7 +297,7 @@ public class AirDropFlowTests : IDisposable
 
         Assert.Null(result);
         Assert.False(File.Exists(Path.Combine(_downloadDir, "refused.txt")));
-        Assert.Contains("upload discarded unread: declined", log);
+        Assert.Contains("declined: the upload is refused unread", log);
         Assert.DoesNotContain(log, line => line.StartsWith("upload: ", StringComparison.Ordinal));
     }
 
@@ -1105,14 +1107,66 @@ public class ConnectionEndTests : IDisposable
         Assert.Contains(log, line => line.StartsWith("saved, but the peer was gone before the 200 reached it", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task A_declined_upload_is_refused_at_once_without_reading_its_body()
+    {
+        // The upload used to be drained before the 401, which over AWDL meant minutes of
+        // "Sending" on the phone for a file already refused (session 13). It must now be
+        // answered as soon as /Upload arrives, with almost all of its body left unread.
+        byte[] photo = new byte[1024 * 1024];
+        Random.Shared.NextBytes(photo); // incompressible, so the body on the wire is large too
+
+        var ask = new AirDropAskRequest("Phone", "iPhone", "id", AirDropAskRequest.FinderBundleId,
+            [AirDropFileEntry.ForFile("IMG_0002.JPG")]);
+
+        byte[] requests = await RequestsAsync(async client =>
+        {
+            await client.WriteRequestAsync("POST", "/Ask", PlistHeaders(), BinaryPlistWriter.Write(ask.ToPlist()));
+
+            var uploadHeaders = new HttpHeaders();
+            uploadHeaders.Set("Content-Type", "application/x-cpio");
+
+            await client.WriteStreamingRequestAsync("POST", "/Upload", uploadHeaders, async (body, token) =>
+            {
+                await using var dvzip = new DvZipWriteStream(body);
+                var archive = new CpioWriter(dvzip);
+                await archive.WriteFileAsync("./IMG_0002.JPG", photo, ct: token);
+                await archive.CompleteAsync(token);
+                await dvzip.CompleteAsync(token);
+            });
+        });
+
+        var log = new List<string>();
+        var stream = new ScriptedStream(requests, resetAfterInput: false);
+
+        AirDropTransferResult? result = await new AirDropReceiver(new AirDropReceiverOptions
+        {
+            DownloadDirectory = _root,
+            ConsentHandler = (_, _) => Task.FromResult(false),
+            Log = log.Add,
+        }).HandleConnectionAsync(stream);
+
+        Assert.Null(result);
+        Assert.Contains(stream.Responses, line => line.StartsWith("HTTP/1.1 401", StringComparison.Ordinal));
+        Assert.True(stream.Consumed < requests.Length / 2,
+            $"Read {stream.Consumed:N0} of {requests.Length:N0} bytes; a refused upload must not be drained.");
+        Assert.Contains("declined: the upload is refused unread", log);
+        Assert.DoesNotContain(log, line => line.StartsWith("upload: ", StringComparison.Ordinal));
+        Assert.False(File.Exists(Path.Combine(_root, "IMG_0002.JPG")));
+    }
+
     /// <summary>
     /// Serves a fixed run of request bytes, then either ends cleanly or resets, as a phone
     /// does. Can also reset while a chosen response is being written, counted from 1.
+    /// Records how much input was read, and the status lines written.
     /// </summary>
     private sealed class ScriptedStream(byte[] input, bool resetAfterInput, int failResponse = 0) : Stream
     {
         private readonly MemoryStream _input = new(input);
-        private int _responses;
+        private readonly List<string> _responses = [];
+
+        public long Consumed => _input.Position;
+        public IReadOnlyList<string> Responses => _responses;
 
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
         {
@@ -1123,8 +1177,13 @@ public class ConnectionEndTests : IDisposable
 
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
         {
-            if (buffer.Span.StartsWith("HTTP/1.1 "u8) && ++_responses == failResponse)
-                throw Reset("write data to");
+            if (buffer.Span.StartsWith("HTTP/1.1 "u8))
+            {
+                string head = Encoding.ASCII.GetString(buffer.Span);
+                _responses.Add(head[..head.IndexOf('\r')]);
+
+                if (_responses.Count == failResponse) throw Reset("write data to");
+            }
 
             return ValueTask.CompletedTask;
         }
