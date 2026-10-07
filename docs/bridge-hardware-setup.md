@@ -270,9 +270,12 @@ protocol's only real security boundary.
   was reloaded by hand, so `owl-session.sh` now does it first; `RELOAD=0` skips it. If no
   peer appears within about 30 seconds anyway, stop OWL and run the script again.
 - **Reading the receiver log.** `connection reset by peer between requests` is normal: iOS
-  ends every connection that way. A failure is an error printed as `Connection failed`, or an
-  upload that never reaches `upload complete`. `saved, but the peer was gone before the 200
-  reached it` means the files arrived, even if the phone reports otherwise.
+  ends every connection that way. A connection that ended in an error prints a timestamped
+  `connection failed: ...`, or `connection failed during the TLS handshake, before any
+  request: ...` when the phone dropped it before saying anything. An upload succeeded only if
+  it reached `upload complete`. `saved, but the peer was gone before the 200 reached it` means
+  the files arrived, even if the phone reports otherwise. `declined: the upload is refused
+  unread` is a person saying no; the 401 goes out at once and the connection closes.
 - **Stop the receiver before OWL.** On stop, the receiver withdraws itself from the phone's
   list with an mDNS goodbye, which travels over awdl0. Stop OWL first and it cannot get out,
   and the phone keeps showing a receiver that is gone.

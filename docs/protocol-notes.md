@@ -1349,3 +1349,67 @@ done by hand. `owl-session.sh` now reloads the driver before every start; `RELOA
 3. The consent wait at 30 s and 60 s, and what the phone shows on a real decline.
 4. Where between 6.4 MB and ~25 MB does a transfer stop arriving?
 5. Sending **to** an iPhone has never been tried.
+
+#### 2026-10-08 — Session 13: transfers work again at the same place; the decline was too slow
+
+Session 13 ran at **session 11 and 12's place** again, so the return to session 10's location
+is still untested. Commit `151eee6`, iOS **27.0.1**. The tester's own Apple devices were off and
+the phone was restarted. `owl-session.sh` reloaded the driver itself, the phone appeared 14 s
+after OWL started, and the width was 20 MHz without help. The scan showed the channel-8
+network at signal 64, against 72 in session 12.
+
+**Three of ten uploads arrived**, where sessions 11 and 12 got none of seventeen at the same
+place. Each was the same 203,596-byte JPEG, and each success took 13 to 17 s from `/Upload`
+to `upload complete`. Since session 12, three things changed: iOS 27.0.1, the receiver
+fixes in `151eee6`, and the automatic driver reload. It was also past midnight, and the
+neighbouring network was a little weaker. Nothing here separates them. The mDNS fix is the
+least likely cause, since an upload runs on one connection that mDNS no longer touches.
+
+**One shape for every upload.** OWL's send errors came in a burst 11 to 17 s after
+`/Upload` in eleven of the twelve uploads (one was not seen): the successes, the failures,
+and both declines, whose bodies the receiver was still reading in order to discard them. On the three successes, the burst
+fell in the same second as `upload complete`. So the burst marks the upload in full flow,
+not a failure. The failures stopped near that point and the phone gave up about 2 to 2.5
+minutes later. The tester's reading is that the transfer either completes before something
+around that point stops the flow, or does not complete at all. If so, smaller files should
+succeed more often. That is the next measurement.
+
+**The AirDrop list fix held:** the laptop stayed listed for the full five idle minutes,
+where in session 12 it had vanished. The goodbye again removed it at once on stop, and a
+restart left one entry. No send failed before `/Ask`, and no `saved, but the peer was gone`
+line appeared.
+
+**Fixed: a decline took minutes to reach the phone.** After typing `n`, the phone kept
+showing "Sending" and only showed "Declined" about three minutes later. The receiver
+refused by first reading the whole upload to discard it, so the 401 could arrive as a proper
+response, and at this link's speed that took minutes. The read then died with the link, so
+the log showed a decline exactly like a failed upload. A decline now answers 401 the moment
+`/Upload` arrives, reads none of the body, logs `declined: the upload is refused unread`, and
+closes. The upload is still never read before consent; it is now not read at all.
+
+**Fixed: resets after `/Discover` still read as failures.** Three lines like `Connection
+failed: Unable to read data ... Connection reset by peer`, and one write variant, appeared
+after `/Discover`. The fix in `151eee6` covers resets while waiting for the next request, and
+the HTTP layer passes those through unwrapped. So these happened elsewhere, most likely
+during the TLS handshake of a connection the phone opened and dropped. The line gave no
+stage and no time, so it could not be placed. It now reads `connection failed during the TLS
+handshake, before any request: ...` or `connection failed: ...`, timestamped like the rest
+of the log.
+
+**Smaller observations:**
+
+- OWL logged `remove peer` for the phone at 00:45:31, 00:58:59, 01:11:02 (after a success)
+  and 01:22:21. Each time the phone came back.
+- The first upload bytes varied (`0000002D789C`, `0000002C789C`, `00019624789C`) and did not
+  predict the outcome. One success was two DVZip blocks, two were five.
+- The successes were sends 3, 6 and 9. Twelve sends are too few to read anything into that.
+
+### Open questions
+
+1. **Does success depend on file size?** Same place, same setup, five sends each of a
+   ~50 KB, ~200 KB and ~600 KB file. If small files nearly always arrive and large ones rarely
+   do, the limit is how long an upload runs, not the file itself.
+2. Does the phone now show a decline within seconds?
+3. Do transfers work at session 10's location? Still untested.
+4. The consent wait at 30 s and 60 s.
+5. Sending **to** an iPhone has never been tried.
