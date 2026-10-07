@@ -6,7 +6,7 @@
 # told not to touch them with -N, and the receiver must be started *after* this.
 #
 #   bash tools/owl-session.sh              # wlan0, channel 6
-#   bash tools/owl-session.sh wlan0 44     # another channel
+#   RELOAD=0 bash tools/owl-session.sh     # skip the driver reload described below
 #
 # The log lands in /tmp/owl-<time>-ch<channel>.log; the path is printed before OWL starts.
 set -euo pipefail
@@ -17,6 +17,28 @@ LOG=/tmp/owl-$(date +%H%M%S)-ch${CHANNEL}.log
 
 echo "== stopping anything that manages the radio"
 sudo airmon-ng check kill
+
+# Sessions 9, 11 and 12 found no peer at all on the first start, every time until the driver
+# was reloaded by hand, after which the phone appeared within a second. The card arrives here
+# straight from an ordinary Wi-Fi connection, and a freshly loaded driver is what reliably
+# works, so it is reloaded first. Done after the managers are stopped, so nothing grabs the
+# card back in between. The screen may glitch for a moment; terminals keep working.
+if [ "${RELOAD:-1}" != 0 ]; then
+  echo "== reloading the Wi-Fi driver (RELOAD=0 skips this)"
+  sudo modprobe -r iwlmvm iwlwifi
+  sleep 3
+  sudo modprobe iwlwifi
+
+  for _ in $(seq 1 20); do
+    [ -e "/sys/class/net/${INTERFACE}" ] && break
+    sleep 0.5
+  done
+
+  if [ ! -e "/sys/class/net/${INTERFACE}" ]; then
+    echo "${INTERFACE} did not come back after the reload; check ip link for its new name"
+    exit 1
+  fi
+fi
 
 echo "== ${INTERFACE} to monitor mode on channel ${CHANNEL}"
 sudo ip link set "$INTERFACE" down

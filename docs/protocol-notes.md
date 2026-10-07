@@ -1290,3 +1290,62 @@ awdl0, so **stop the receiver before OWL**, or it cannot get out.
    link that works first.
 3. Where between 6.4 MB and ~25 MB does a transfer stop arriving?
 4. Sending **to** an iPhone has never been tried.
+
+#### 2026-10-07 — Session 12: the code is ruled out; three receiver faults found and fixed
+
+Session 12 ran at **session 11's place again**; the planned return to session 10's location
+did not happen. Current build `49c229b`, and session 10's build `0f651d6` side by side. iOS
+27.0; the phone was joined to a 5 GHz network on channel 153. A scan found one strong network
+on channel 8 (signal 72), which overlaps channel 6. The phone has since been updated to iOS
+27.0.1, so later sessions differ from this one in that too.
+
+**Zero of twelve sends arrived**: five on the current build, four on session 10's, and three
+extra. **Session 10's own build failed exactly as the current one did**, so the code changed
+since session 10 is not what stops transfers here. Two failure shapes:
+
+- Nine reached `/Upload` and ended `Connection closed before a chunk header`, about 10 to
+  20 s in, each alongside a burst of OWL's send errors.
+- Three never reached `/Ask`. `/Discover` was answered, the phone reset that connection, and
+  its next connection died during the TLS handshake (`unexpected EOF`).
+
+With the phone's Wi-Fi switched off, its AWDL sequence held channel 6 in all sixteen slots,
+which it never did while joined, and the send still failed. So the phone dividing its time
+with its own network is not the cause either. An attempt to run OWL on channel 44 was refused
+by the card's regulatory flags (no-IR there). That is the card's limit, and it is not
+something to try again.
+
+**The goodbye works on a real phone.** Stopping the receiver with OWL still running removed
+the laptop from the phone's AirDrop list instantly, and a restart left one entry. Two
+entries appeared only with session 10's build, which predates the goodbye.
+
+**Three receiver faults the session surfaced, now fixed:**
+
+1. **The laptop vanished from the AirDrop list while both sides were up.** The receiver
+   answered only the browse question for `_airdrop._tcp.local`. Having found a receiver, a
+   peer resolves it with questions about the instance's SRV and TXT and the host's address,
+   and keeps cached records alive by asking for each again before its TTL runs out (RFC 6762,
+   section 5.2). None was answered, so the records expired on the phone after 120 s. Both
+   transports now answer any question about a record they announce. They also announce twice,
+   a second apart, at start, as section 8.3 requires; a single announcement was easily lost.
+2. **Every `/Discover` looked like a failure.** iOS ends connections with a reset, not a
+   close, and the CLI printed each one as `Connection failed`. That put a line identical to
+   a real failure after every successful exchange. A reset between requests now logs
+   `connection reset by peer between requests` and ends the connection normally. A reset
+   inside a request is still an error, so the real pre-`/Ask` failures stand out.
+3. **A saved transfer could be reported as failed.** Files are moved into place before the
+   final 200 is written, but if the phone hung up in that moment the exception discarded the
+   result. The receiver now logs `saved, but the peer was gone before the 200 reached it` and
+   reports the transfer.
+
+**The driver reload is now automatic.** Sessions 9, 11 and 12 all found no peer until it was
+done by hand. `owl-session.sh` now reloads the driver before every start; `RELOAD=0` skips it.
+
+### Open questions
+
+1. Do transfers work at session 10's location with the current code and iOS 27.0.1? If they
+   do, the location was the variable. If not, the location and the iOS update cannot be told
+   apart.
+2. Does the laptop now stay in the phone's AirDrop list while idle?
+3. The consent wait at 30 s and 60 s, and what the phone shows on a real decline.
+4. Where between 6.4 MB and ~25 MB does a transfer stop arriving?
+5. Sending **to** an iPhone has never been tried.

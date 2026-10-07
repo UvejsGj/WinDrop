@@ -266,9 +266,13 @@ protocol's only real security boundary.
   does that itself a few seconds after OWL starts, and prints `== width with OWL running:`.
   Anything but `20 MHz` there: run `sudo iw dev wlan0 set channel 6 HT20` with OWL left
   running. The script also keeps the screen from blanking, since one share failed while it had.
-- **No peer within about 30 seconds: reload the driver.** Sessions 9 and 11 both needed it
-  before the phone appeared at all. Stop OWL, run
-  `sudo modprobe -r iwlmvm iwlwifi && sleep 3 && sudo modprobe iwlwifi`, start OWL again.
+- **The driver is reloaded at every start.** Sessions 9, 11 and 12 found no peer until it
+  was reloaded by hand, so `owl-session.sh` now does it first; `RELOAD=0` skips it. If no
+  peer appears within about 30 seconds anyway, stop OWL and run the script again.
+- **Reading the receiver log.** `connection reset by peer between requests` is normal: iOS
+  ends every connection that way. A failure is an error printed as `Connection failed`, or an
+  upload that never reaches `upload complete`. `saved, but the peer was gone before the 200
+  reached it` means the files arrived, even if the phone reports otherwise.
 - **Stop the receiver before OWL.** On stop, the receiver withdraws itself from the phone's
   list with an mDNS goodbye, which travels over awdl0. Stop OWL first and it cannot get out,
   and the phone keeps showing a receiver that is gone.
