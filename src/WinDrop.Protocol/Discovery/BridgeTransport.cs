@@ -198,9 +198,14 @@ public sealed class BridgeTransport : IAirDropTransport
             return; // the AWDL link carries other mDNS traffic too
         }
 
-        if (AirDropRecords.IsQueryForService(message))
+        AirDropServiceRecord? advertised = _advertised;
+
+        // Browse questions, and questions about this receiver's own records, get the whole
+        // set: refreshing and resolving need answers too, or the entry expires on the peer.
+        if (AirDropRecords.IsQueryForService(message)
+            || (advertised is not null && AirDropRecords.AsksAboutInstance(message, advertised, HostFor(advertised))))
         {
-            if (_advertised is { } record) _ = AnnounceAsync(record, CancellationToken.None);
+            if (advertised is not null) _ = AnnounceAsync(advertised, CancellationToken.None);
             return;
         }
 
@@ -240,7 +245,13 @@ public sealed class BridgeTransport : IAirDropTransport
         _advertised = record;
         _assembler.OwnInstance = record.InstanceName;
 
-        await AnnounceAsync(record, ct);
+        // Twice, a second apart, as RFC 6762 (section 8.3) requires: multicast is never
+        // acknowledged, and a single announcement is easily lost on awdl0.
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            if (attempt > 0) await Task.Delay(TimeSpan.FromSeconds(1), ct);
+            await AnnounceAsync(record, ct);
+        }
 
         return new Advertisement(this, record);
     }

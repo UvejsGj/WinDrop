@@ -59,8 +59,14 @@ public sealed class InfraWifiTransport : IAirDropTransport
         _assembler.OwnInstance = record.InstanceName;
 
         // Announce unsolicited as well as answering queries: a peer that is already
-        // browsing will not send a fresh query just because we arrived.
-        await _mdns.SendAsync(AirDropRecords.BuildAnnouncement(record, _hostName, LocalAddresses()), ct);
+        // browsing will not send a fresh query just because we arrived. Twice, a second
+        // apart, as RFC 6762 (section 8.3) requires: multicast is never acknowledged, and a
+        // single announcement is easily lost, over AWDL most of all.
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            if (attempt > 0) await Task.Delay(TimeSpan.FromSeconds(1), ct);
+            await _mdns.SendAsync(AirDropRecords.BuildAnnouncement(record, _hostName, LocalAddresses()), ct);
+        }
 
         return new Advertisement(this, record);
     }
@@ -149,12 +155,17 @@ public sealed class InfraWifiTransport : IAirDropTransport
 
     private void OnMessage(ReceivedDnsMessage received)
     {
-        if (AirDropRecords.IsQueryForService(received.Message))
+        AirDropServiceRecord? advertised = _advertised;
+
+        // Browse questions, and questions about this receiver's own records, get the whole
+        // set: refreshing and resolving need answers too, or the entry expires on the peer.
+        if (AirDropRecords.IsQueryForService(received.Message)
+            || (advertised is not null && AirDropRecords.AsksAboutInstance(received.Message, advertised, _hostName)))
         {
-            if (_advertised is { } record)
+            if (advertised is not null)
             {
                 _ = _mdns.SendAsync(
-                    AirDropRecords.BuildAnnouncement(record, _hostName, LocalAddresses()),
+                    AirDropRecords.BuildAnnouncement(advertised, _hostName, LocalAddresses()),
                     CancellationToken.None);
             }
 

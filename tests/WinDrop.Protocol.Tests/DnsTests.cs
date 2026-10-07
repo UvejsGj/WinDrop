@@ -257,6 +257,61 @@ public class DnsMessageTests
 }
 
 /// <summary>
+/// Which questions the receiver answers. Only the browse question used to be answered, so
+/// a peer refreshing or resolving this receiver's records met silence, and the records
+/// expired on it after their TTL: session 12's laptop vanished from the AirDrop list while
+/// both sides were up.
+/// </summary>
+public class QueryAnsweringTests
+{
+    private const string Host = "kali.local";
+    private const string Instance = "kali-23fb9e._airdrop._tcp.local";
+
+    private static readonly AirDropServiceRecord Record =
+        new("kali-23fb9e", AirDropServiceRecord.DefaultPort, AirDropReceiverFlags.SupportsDvZip);
+
+    private static DnsMessage Query(string name, DnsRecordType type) =>
+        new() { Questions = { new DnsQuestion(name, type) } };
+
+    [Theory]
+    [InlineData(Instance, DnsRecordType.Srv)]
+    [InlineData(Instance, DnsRecordType.Txt)]
+    [InlineData(Instance, DnsRecordType.Any)]
+    [InlineData(Host, DnsRecordType.Aaaa)]
+    [InlineData(Host, DnsRecordType.A)]
+    [InlineData(Host, DnsRecordType.Any)]
+    [InlineData("KALI-23FB9E._airdrop._tcp.local", DnsRecordType.Srv)] // DNS names ignore case
+    [InlineData("Kali.Local", DnsRecordType.Aaaa)]
+    public void Questions_about_this_receiver_are_answered(string name, DnsRecordType type)
+    {
+        Assert.True(AirDropRecords.AsksAboutInstance(Query(name, type), Record, Host));
+    }
+
+    [Theory]
+    [InlineData("kali-69c4c4._airdrop._tcp.local", DnsRecordType.Srv)] // another receiver
+    [InlineData("other.local", DnsRecordType.Aaaa)]                    // another host
+    [InlineData(Instance, DnsRecordType.Aaaa)]                         // right name, wrong type
+    [InlineData(Host, DnsRecordType.Srv)]
+    [InlineData(AirDropServiceRecord.ServiceType, DnsRecordType.Ptr)]  // the browse question has its own check
+    public void Questions_about_anything_else_are_not(string name, DnsRecordType type)
+    {
+        Assert.False(AirDropRecords.AsksAboutInstance(Query(name, type), Record, Host));
+    }
+
+    [Fact]
+    public void A_response_is_never_taken_for_a_question()
+    {
+        var response = new DnsMessage
+        {
+            IsResponse = true,
+            Questions = { new DnsQuestion(Instance, DnsRecordType.Srv) },
+        };
+
+        Assert.False(AirDropRecords.AsksAboutInstance(response, Record, Host));
+    }
+}
+
+/// <summary>
 /// Withdrawing a service when the receiver stops. Without it, session 11's phone listed the
 /// stopped receiver beside the live one, both as "kali", and only one could be reached.
 /// </summary>

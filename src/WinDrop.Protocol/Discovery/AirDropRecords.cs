@@ -96,4 +96,29 @@ public static class AirDropRecords
         && message.Questions.Any(q =>
             q.Type is DnsRecordType.Ptr or DnsRecordType.Any
             && q.Name.Equals(AirDropServiceRecord.ServiceType, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// True if a query asks for one of this receiver's own records: its SRV or TXT by
+    /// instance name, or its address by host name.
+    ///
+    /// A browse question for the service type is not the only one a peer asks. Having found
+    /// a receiver, it resolves it with questions about that instance and its host, and it
+    /// keeps the cached records alive by asking for each again before its TTL runs out
+    /// (RFC 6762, section 5.2). Answering only the browse question, as this code first did,
+    /// lets those records expire after 120 seconds although the receiver is up and healthy.
+    /// Session 12 saw exactly that shape: the phone still an active AWDL peer, the receiver
+    /// running, and the laptop gone from the AirDrop list.
+    /// </summary>
+    public static bool AsksAboutInstance(DnsMessage message, AirDropServiceRecord record, string hostName)
+    {
+        if (message.IsResponse) return false;
+
+        string instance = $"{record.InstanceName}.{AirDropServiceRecord.ServiceType}";
+
+        return message.Questions.Any(q =>
+            (q.Type is DnsRecordType.Srv or DnsRecordType.Txt or DnsRecordType.Any
+                && q.Name.Equals(instance, StringComparison.OrdinalIgnoreCase))
+            || (q.Type is DnsRecordType.A or DnsRecordType.Aaaa or DnsRecordType.Any
+                && q.Name.Equals(hostName, StringComparison.OrdinalIgnoreCase)));
+    }
 }
