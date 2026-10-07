@@ -111,5 +111,24 @@ public class PeerTextTests
         Assert.Equal("  09:41:05 request POST /Up?[2Jload", line);
     }
 
+    [Fact]
+    public void A_failed_connection_says_when_and_how_far_it_got()
+    {
+        // Session 13's resets read exactly like failed transfers, with no time to place them.
+        var at = new DateTime(2026, 10, 8, 0, 42, 7);
+        const string reset = "Unable to read data from the transport connection: Connection reset by peer.";
+
+        Assert.Equal(
+            "  00:42:07 connection failed during the TLS handshake, before any request: " + reset,
+            ConsoleText.ConnectionError(at, handshakeDone: false, reset));
+
+        Assert.Equal(
+            "  00:42:07 connection failed: Connection closed before a chunk header.",
+            ConsoleText.ConnectionError(at, handshakeDone: true, "Connection closed before a chunk header."));
+
+        // Still peer text: a refused member name can be quoted in the message.
+        Assert.DoesNotContain('\u001b', ConsoleText.ConnectionError(at, true, "member '\u001b[2J' escapes"));
+    }
+
     private static bool IsUnsafe(char c) => char.IsControl(c) || BidiFormatting.Contains(c);
 }

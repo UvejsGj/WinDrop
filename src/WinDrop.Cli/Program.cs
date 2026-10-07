@@ -145,9 +145,13 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
     {
         // One connection at a time is deliberate: a consent prompt on the console cannot
         // sensibly be answered for two senders at once.
+        bool handshakeDone = false;
+
         try
         {
             await using var ssl = await AirDropTls.AuthenticateAsServerAsync(raw, certificate, ct);
+            handshakeDone = true;
+
             AirDropTransferResult? result = await receiver.HandleConnectionAsync(ssl, ct);
 
             if (result is not null)
@@ -161,8 +165,8 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Exception messages quote what the peer sent: a refused member name, a bad cpio
-            // header, an HTTP line.
-            Console.Error.WriteLine($"Connection failed: {PeerText.Printable(ex.Message)}");
+            // header, an HTTP line. LogLine cleans them.
+            Console.Error.WriteLine(ConsoleText.ConnectionError(DateTime.Now, handshakeDone, ex.Message));
         }
         finally
         {

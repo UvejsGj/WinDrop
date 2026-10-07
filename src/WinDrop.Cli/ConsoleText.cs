@@ -47,4 +47,17 @@ internal static class ConsoleText
     /// is one line and never has a reason to hold a control character.
     /// </summary>
     public static string LogLine(DateTime time, string line) => $"  {time:HH:mm:ss} {PeerText.Printable(line)}";
+
+    /// <summary>
+    /// A connection that ended in an error, timestamped like the log and saying how far it got.
+    ///
+    /// The line used to be "Connection failed: ..." with no time and no stage. Session 13 saw
+    /// three resets by the phone that read exactly like a failed transfer, and could neither
+    /// place them in time nor tell where they happened. A reset during the TLS handshake is the
+    /// phone dropping a connection before it said anything; one after it cut an exchange short.
+    /// </summary>
+    public static string ConnectionError(DateTime time, bool handshakeDone, string message) =>
+        LogLine(time, handshakeDone
+            ? $"connection failed: {message}"
+            : $"connection failed during the TLS handshake, before any request: {message}");
 }
