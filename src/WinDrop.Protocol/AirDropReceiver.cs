@@ -93,7 +93,9 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
         // on it before reading anything.
         Task<bool>? pendingConsent = null;
 
-        while (await connection.ReadRequestHeadAsync(ct) is { } head)
+        bool reset = false;
+
+        while (await NextRequestAsync() is { } head)
         {
             // Compare on the path only; a peer may append a query string.
             string path = head.Target.Split('?', 2)[0].TrimEnd('/');
@@ -199,7 +201,22 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
 
                     options.Log?.Invoke($"upload complete: {result.Files.Count} file(s), {result.TotalBytes:N0} bytes -> 200");
 
-                    await connection.WriteResponseAsync(200, "OK", new HttpHeaders(), ReadOnlyMemory<byte>.Empty, ct);
+                    try
+                    {
+                        await connection.WriteResponseAsync(200, "OK", new HttpHeaders(), ReadOnlyMemory<byte>.Empty, ct);
+                    }
+                    catch (IOException ex)
+                    {
+                        // The files are already in place: extraction moved them before this
+                        // answer was written. A peer that hangs up first does not unsave them,
+                        // and letting this throw would report a transfer that arrived as one
+                        // that failed. The sender may well show it as failed; this side says what
+                        // actually happened.
+                        options.Log?.Invoke(
+                            $"saved, but the peer was gone before the 200 reached it: {PeerText.Printable(ex.Message)}");
+                        return result;
+                    }
+
                     break;
                 }
 
@@ -211,8 +228,40 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
             }
         }
 
-        options.Log?.Invoke("connection closed by peer");
+        options.Log?.Invoke(reset ? "connection reset by peer between requests" : "connection closed by peer");
         return result;
+
+        // iOS ends a connection with a reset rather than a close: every /Discover connection
+        // in sessions 11 and 12 ended that way. Between requests nothing is in flight, so it is
+        // the peer leaving, not a failure. Reported as an error, it put a line indistinguishable
+        // from a real failure after every successful /Discover. A reset in the middle of a
+        // request still throws from wherever the request was being read.
+        async Task<HttpRequestHead?> NextRequestAsync()
+        {
+            try
+            {
+                return await connection.ReadRequestHeadAsync(ct);
+            }
+            catch (IOException ex) when (IsReset(ex))
+            {
+                reset = true;
+                return null;
+            }
+        }
+    }
+
+    private static bool IsReset(Exception ex)
+    {
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+        {
+            if (e is System.Net.Sockets.SocketException
+                { SocketErrorCode: System.Net.Sockets.SocketError.ConnectionReset or System.Net.Sockets.SocketError.ConnectionAborted })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

@@ -996,6 +996,168 @@ public class ArchiveRootTests : IDisposable
 }
 
 /// <summary>
+/// How the end of a connection is reported. iOS ends connections with a reset, and can hang
+/// up between a transfer being saved and its 200 arriving; neither may be misreported.
+/// Driven through a scripted stream instead of sockets, so the reset lands exactly where
+/// each test needs it.
+/// </summary>
+public class ConnectionEndTests : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), $"windrop-ends-{Guid.NewGuid():N}");
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_root, recursive: true); } catch { /* best effort */ }
+        GC.SuppressFinalize(this);
+    }
+
+    private AirDropReceiver Receiver(List<string> log) => new(new AirDropReceiverOptions
+    {
+        DownloadDirectory = _root,
+        ConsentHandler = (_, _) => Task.FromResult(true),
+        Log = log.Add,
+    });
+
+    /// <summary>The bytes a sender would put on the wire, written by our own HTTP client.</summary>
+    private static async Task<byte[]> RequestsAsync(Func<HttpConnection, Task> write)
+    {
+        var wire = new MemoryStream();
+        await using (var client = new HttpConnection(wire, ownsStream: false))
+            await write(client);
+
+        return wire.ToArray();
+    }
+
+    private static HttpHeaders PlistHeaders()
+    {
+        var headers = new HttpHeaders();
+        headers.Set("Content-Type", "application/octet-stream");
+        return headers;
+    }
+
+    [Fact]
+    public async Task A_reset_after_a_completed_request_is_the_peer_leaving_not_a_failure()
+    {
+        // Every /Discover in sessions 11 and 12 ended like this, and each was printed as a
+        // failed connection, indistinguishable from the real failures beside them.
+        byte[] requests = await RequestsAsync(client => client.WriteRequestAsync(
+            "POST", "/Discover", PlistHeaders(), BinaryPlistWriter.Write(new Dictionary<string, object?>())));
+
+        var log = new List<string>();
+        AirDropTransferResult? result = await Receiver(log).HandleConnectionAsync(
+            new ScriptedStream(requests, resetAfterInput: true));
+
+        Assert.Null(result);
+        Assert.Contains("-> 200", log);
+        Assert.Equal("connection reset by peer between requests", log[^1]);
+    }
+
+    [Fact]
+    public async Task A_reset_in_the_middle_of_a_request_is_still_a_failure()
+    {
+        // Only a reset between requests is quiet. One that cuts a body short lost something.
+        byte[] requests = "POST /Discover HTTP/1.1\r\nContent-Length: 100\r\n\r\nonly part"u8.ToArray();
+
+        await Assert.ThrowsAsync<IOException>(() => new AirDropReceiver(new AirDropReceiverOptions
+        {
+            DownloadDirectory = _root,
+            ConsentHandler = (_, _) => Task.FromResult(true),
+        }).HandleConnectionAsync(new ScriptedStream(requests, resetAfterInput: true)));
+    }
+
+    [Fact]
+    public async Task A_transfer_saved_before_the_peer_hung_up_is_reported_as_saved()
+    {
+        // The files are moved into place before the 200 is written. A phone that hangs up in
+        // that moment used to turn a transfer that arrived into a reported failure.
+        byte[] photo = new byte[5000];
+        Random.Shared.NextBytes(photo);
+
+        var ask = new AirDropAskRequest("Phone", "iPhone", "id", AirDropAskRequest.FinderBundleId,
+            [AirDropFileEntry.ForFile("IMG_0001.JPG")]);
+
+        byte[] requests = await RequestsAsync(async client =>
+        {
+            await client.WriteRequestAsync("POST", "/Ask", PlistHeaders(), BinaryPlistWriter.Write(ask.ToPlist()));
+
+            var uploadHeaders = new HttpHeaders();
+            uploadHeaders.Set("Content-Type", "application/x-cpio");
+
+            await client.WriteStreamingRequestAsync("POST", "/Upload", uploadHeaders, async (body, token) =>
+            {
+                await using var dvzip = new DvZipWriteStream(body);
+                var archive = new CpioWriter(dvzip);
+                await archive.WriteDirectoryAsync(".", token);
+                await archive.WriteFileAsync("./IMG_0001.JPG", photo, ct: token);
+                await archive.CompleteAsync(token);
+                await dvzip.CompleteAsync(token);
+            });
+        });
+
+        var log = new List<string>();
+
+        // The second response is the /Upload's 200; the first answered /Ask.
+        AirDropTransferResult? result = await Receiver(log).HandleConnectionAsync(
+            new ScriptedStream(requests, resetAfterInput: false, failResponse: 2));
+
+        Assert.NotNull(result);
+        Assert.Equal(photo, await File.ReadAllBytesAsync(Path.Combine(_root, "IMG_0001.JPG")));
+        Assert.Contains(log, line => line.StartsWith("saved, but the peer was gone before the 200 reached it", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Serves a fixed run of request bytes, then either ends cleanly or resets, as a phone
+    /// does. Can also reset while a chosen response is being written, counted from 1.
+    /// </summary>
+    private sealed class ScriptedStream(byte[] input, bool resetAfterInput, int failResponse = 0) : Stream
+    {
+        private readonly MemoryStream _input = new(input);
+        private int _responses;
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+        {
+            int read = _input.Read(buffer.Span);
+            if (read == 0 && resetAfterInput) throw Reset("read data from");
+            return ValueTask.FromResult(read);
+        }
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
+        {
+            if (buffer.Span.StartsWith("HTTP/1.1 "u8) && ++_responses == failResponse)
+                throw Reset("write data to");
+
+            return ValueTask.CompletedTask;
+        }
+
+        private static IOException Reset(string what) =>
+            new($"Unable to {what} the transport connection: Connection reset by peer.",
+                new SocketException((int)SocketError.ConnectionReset));
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) =>
+            ReadAsync(buffer.AsMemory(offset, count), ct).AsTask();
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct) =>
+            WriteAsync(buffer.AsMemory(offset, count), ct).AsTask();
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            WriteAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+
+        public override Task FlushAsync(CancellationToken ct) => Task.CompletedTask;
+        public override void Flush() { }
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+    }
+}
+
+/// <summary>
 /// Unpacking streams to disk, so its limits and its all-or-nothing rule are what stand
 /// between an accepted sender and the machine's memory and disk. Every case here would have
 /// passed through, or run out of memory in, the receiver that inflated uploads into RAM.
