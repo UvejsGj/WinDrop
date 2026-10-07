@@ -13,9 +13,9 @@ protocol. Learning project: understanding over shortcuts, no wrapping of existin
 | 3. Self-signed TLS + minimal HTTP/1.1 | **done** |
 | 4. Discover → Ask → Upload state machine | **done** — verified against opendrop, an independent implementation |
 | 5. DVZip compression + CPIO `newc` archive | **done** — CPIO checked against bsdtar/libarchive |
-| 6. Reaching an iPhone | **working, slowly** — real iPhones on iOS 26.6 and 27.0 have AirDropped files to WinDrop, arriving intact. Over Linux + OWL, at ~16 KB/s on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
+| 6. Reaching an iPhone | **working, slowly and intermittently** — real iPhones on iOS 26.6, 27.0 and 27.0.1 have AirDropped files to WinDrop, arriving intact. Over Linux + OWL, at 12–27 KB/s and roughly one transfer in three in recent sessions, on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
 
-198 tests, all passing.
+279 tests, all passing.
 
 ## The one thing to understand first
 
@@ -38,15 +38,16 @@ not a software one.
 
 An iPhone has sent files to WinDrop's receiver running on Linux, with
 [OWL](https://github.com/seemoo-lab/owl) providing `awdl0`. Photos arrived byte-for-byte
-intact on iOS 26.6 and iOS 27.0: one image, several images in one share, and PNGs whose
-upload mixed compressed and stored DVZip blocks. The log of every session is in
+intact on iOS 26.6, 27.0 and 27.0.1: one image, several images in one share, and PNGs
+whose upload mixed compressed and stored DVZip blocks. The log of every session is in
 [protocol-notes.md](docs/protocol-notes.md).
 
 | | |
 |---|---|
-| iPhone → WinDrop | **works**, verified on real devices |
+| iPhone → WinDrop | **works**, verified on real devices. A share arrives whole or not at all; a failed one leaves nothing behind |
+| Reliability | **about one transfer in three** recently: 3 of 10 in session 10, none of 17 at another place in sessions 11–12, then 3 of 10 there in session 13. Every recent success finished within about 15 s, and whether small files fare better is the open question |
 | WinDrop → iPhone | **untested**. The sender is proven only against opendrop |
-| Speed | **21–27 KB/s** on the one card tested (Intel AX211) at 20 MHz, 15–40 KB/s across all sessions. A 2.5 MB photo takes ~100 s. Largest to arrive: 3.6 MB as one file, 6.4 MB as a four-photo share (267 s). ~25 MB fails |
+| Speed | **12–27 KB/s** in recent sessions on the one card tested (Intel AX211), 15–40 KB/s earlier. A 200 KB photo takes ~15 s, a 2.5 MB one ~100 s. Largest to arrive: 3.6 MB as one file, 6.4 MB as a four-photo share (267 s). ~25 MB fails |
 | Phone setting | **Everyone for 10 Minutes** only. Contacts Only requires an Apple-issued identity, which a non-Apple device cannot hold |
 | Windows alone | **cannot reach an iPhone** (see above). The radio has to be Linux: booted directly, or later a bridge |
 
@@ -79,7 +80,8 @@ security boundary in the protocol, so only for scripted testing) and `--no-early
 image iOS attaches, and iOS gives up on it before a normal answer arrives, reporting a
 decline. So the receiver answers `/Ask` first and asks the person afterwards. The upload
 is not read until they say yes, so an unapproved sender gets no more than the `/Ask` body
-it already had to send. `--no-early-ask` restores the classic order.
+it already had to send. A "no" is answered the moment the upload starts, without reading
+any of it. `--no-early-ask` restores the classic order.
 
 **Who this reaches from Windows:** another WinDrop instance, opendrop, or a Mac started
 with `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
@@ -200,11 +202,15 @@ src/WinDrop.Protocol/
   Dns/            DNS wire format for mDNS
   Discovery/      ITransport seam, mDNS, the infra-Wi-Fi and bridge transports
   AirDrop*.cs     the Discover/Ask/Upload state machine, both halves
+  PeerText.cs     peer text made safe to show, and the rules for safe saved names
+  PreviewImage.cs which preview bytes may reach an image decoder
 src/WinDrop.App/                    WPF desktop app, AirDrop-styled
 src/WinDrop.Cli/                    send / receive / browse
 src/WinDrop.Tools.ContinuitySniffer/  milestone 0 BLE capture
 src/WinDrop.Tools.ContactHash/        local contact-hash probe
 tools/windrop-bridge.py             the Linux-side AWDL relay daemon
+tools/owl-session.sh                brings OWL up for a field session on Kali, and logs it
+tools/retry-capture.sh              counts the phone's resent frames during a transfer
 tools/plist_oracle.py               plistlib fixtures and differential oracle
 docs/                               ADRs and reverse-engineering notes
 ```
