@@ -33,28 +33,6 @@
     <p class="note">Downloads go to the Files app. To put a photo in Photos, open it there and tap Share, then Save Image.</p>
   </section>
 
-  <section class="card">
-    <details>
-      <summary>Add WinDrop to the share sheet</summary>
-      <p>Make a Shortcut once, and <b>Send to WinDrop</b> appears when you tap Share in Photos or Files.</p>
-      <ol>
-        <li>
-          Copy this link:
-          <span class="copy-row">
-            <input id="shortcut-url" type="text" readonly aria-label="Upload link for the Shortcut">
-            <button id="copy" class="button small" type="button">Copy</button>
-          </span>
-        </li>
-        <li>Open the Shortcuts app, tap <b>+</b>, and name the new shortcut <b>Send to WinDrop</b>.</li>
-        <li>Open the shortcut's details and turn on <b>Show in Share Sheet</b>, accepting images, media and files.</li>
-        <li>Add the action <b>Get Contents of URL</b> and paste the link as its URL. Show its options and set Method to <b>POST</b> and Request Body to <b>Form</b>.</li>
-        <li>Add a field of type <b>File</b>, with the key <b>file</b> and the value <b>Shortcut Input</b>.</li>
-        <li>In Photos, tap Share, then <b>Send to WinDrop</b>, and accept on the PC.</li>
-      </ol>
-      <p class="note">It works while WinDrop is open on the PC and both are on the same Wi-Fi. If the PC's address changes, scan its code again and update the link.</p>
-    </details>
-  </section>
-
   <footer>
     <p>Files go straight to the PC over your Wi-Fi, and the PC asks before saving anything. Use this on a network you trust: the connection is not encrypted beyond the Wi-Fi itself.</p>
   </footer>

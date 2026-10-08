@@ -351,7 +351,7 @@
               <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
             <Button Content="New link" Style="{StaticResource TintedCapsuleButton}" Height="46" Click="OnRenewPhoneLink"
-                    ToolTip="Makes a new address. The old one, and any Shortcut using it, stops working."/>
+                    ToolTip="Makes a new address. The old one stops working, on any phone that has it."/>
             <Button Grid.Column="2" Content="Done" Style="{StaticResource CapsuleButton}" Height="46" Click="OnHidePhone"/>
           </Grid>
         </StackPanel>

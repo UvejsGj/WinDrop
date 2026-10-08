@@ -248,9 +248,9 @@ What changed is the question being asked. For someone with a Windows PC and an i
 today, the useful thing is files moving between them, not that the PC appears in the
 AirDrop list. So WinDrop now also serves a [phone page](phone-page.md): the iPhone scans a
 QR code on the PC and uses Safari to send and receive files over ordinary Wi-Fi, at
-ordinary Wi-Fi speed, with the same consent rule as AirDrop. An optional iOS Shortcut puts
-*Send to WinDrop* in the share sheet. It needs no extra hardware, no Linux, no driver and
-nothing from Apple.
+ordinary Wi-Fi speed, with the same consent rule as AirDrop. It needs no extra hardware,
+no Linux, no driver and nothing from Apple. The same day an iPhone on iOS 27.0.1 sent
+photos to it and downloaded images and a video from it.
 
 Two developments since this ADR, recorded here because they decide whether real AirDrop
 on Windows ever becomes possible. Neither has yet.

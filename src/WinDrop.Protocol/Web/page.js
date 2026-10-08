@@ -166,33 +166,8 @@
     request.send(form);
   }
 
-  // Clipboard access needs HTTPS, which this page is not, so copying falls back to
-  // selecting the text and the older copy command.
-  async function copyLink() {
-    const field = $("shortcut-url");
-
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(field.value);
-      } else {
-        field.focus();
-        field.setSelectionRange(0, field.value.length);
-        document.execCommand("copy");
-      }
-
-      $("copy").textContent = "Copied";
-    } catch {
-      field.focus();
-      field.setSelectionRange(0, field.value.length);
-      $("copy").textContent = "Press and hold to copy";
-    }
-  }
-
-  $("shortcut-url").value = `${location.origin}${location.pathname.replace(/\/?$/, "/")}upload`;
-
   picker.addEventListener("change", chooseFiles);
   sendButton.addEventListener("click", send);
-  $("copy").addEventListener("click", copyLink);
 
   loadInfo();
 

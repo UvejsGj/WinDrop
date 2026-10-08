@@ -42,22 +42,18 @@ public sealed class PhonePageOptions
     public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
 }
 
-/// <summary>One file in an upload, as the sender describes it. Size is null when not given.</summary>
-public sealed record PhoneUploadFile(string Name, long? Size);
+/// <summary>One file in an upload, as the page lists it.</summary>
+public sealed record PhoneUploadFile(string Name, long Size);
 
 /// <summary>
-/// What the person at the PC is asked about. Every text field here came from the phone.
-///
-/// <see cref="MoreMayFollow"/> is set when the sender sent no list of its files, as an iOS
-/// Shortcut does not: only the first file's name is known when the question has to be
-/// asked, and <see cref="TotalBytes"/> (the request's length) is the honest bound on the rest.
+/// What the person at the PC is asked about: every file the upload holds, by the page's own
+/// list, which the upload is then held to. Every text field here came from the phone.
 /// </summary>
 public sealed record PhoneUploadRequest(
     string Sender,
     string RemoteAddress,
     IReadOnlyList<PhoneUploadFile> Files,
-    bool MoreMayFollow,
-    long? TotalBytes);
+    long TotalBytes);
 
 /// <summary>A file on this PC offered for download on the page.</summary>
 public sealed record PhoneOfferedFile(string Path, string Name, long Size);
@@ -67,11 +63,10 @@ public sealed record PhoneOfferedFile(string Path, string Name, long Size);
 /// by scanning a QR code, to send files to this PC and download files from it. It is the
 /// route to an iPhone that needs no AWDL, no Linux and no extra hardware, at ordinary Wi-Fi
 /// speed. It is not AirDrop: the PC does not appear in the iPhone's AirDrop list, and the
-/// phone needs the page or a Shortcut instead. See docs/phone-page.md.
+/// phone uses the page instead. See docs/phone-page.md.
 ///
-/// PLAIN HTTP, ON PURPOSE. Safari would show a full-page warning for a self-signed
-/// certificate, and a Shortcut refuses one outright, so HTTPS would mean teaching people to
-/// click through certificate warnings. The traffic is protected by the Wi-Fi's own
+/// PLAIN HTTP, ON PURPOSE. Safari shows a full-page warning for a self-signed certificate,
+/// so HTTPS would mean teaching people to click through certificate warnings. The traffic is protected by the Wi-Fi's own
 /// encryption from anyone outside the network, not from someone already on it who can
 /// intercept traffic, which is why this is meant for home and other trusted networks.
 ///
@@ -82,7 +77,7 @@ public sealed record PhoneOfferedFile(string Path, string Name, long Size);
 /// </summary>
 public sealed class PhonePageServer(PhonePageOptions options)
 {
-    /// <summary>Next to AirDrop's 8770, and fixed so the address saved in a Shortcut keeps working.</summary>
+    /// <summary>Next to AirDrop's 8770.</summary>
     public const int DefaultPort = 8771;
 
     private const int MaxFieldBytes = 64 * 1024;
@@ -129,8 +124,8 @@ public sealed class PhonePageServer(PhonePageOptions options)
 
     /// <summary>
     /// Starts listening on every interface, on <paramref name="port"/> or, if that is taken,
-    /// on any free port. Returns the port. A fixed port is preferred because a Shortcut has
-    /// the address written into it.
+    /// on any free port. Returns the port. A fixed port is preferred so that a Windows
+    /// Firewall rule someone writes for it keeps matching.
     /// </summary>
     public int Listen(int port = DefaultPort)
     {
@@ -336,7 +331,8 @@ public sealed class PhonePageServer(PhonePageOptions options)
 
     /// <summary>
     /// One upload: a form whose text fields come first (who is sending, and the page's list
-    /// of files), then the files.
+    /// of files), then the files. An upload without the list is refused unasked: the list is
+    /// what the person is shown, so without one there is nothing honest to ask about.
     ///
     /// ASKED BEFORE ANY FILE IS READ. The text fields and the first file's headers are read,
     /// then the person is asked, and only after a yes is a byte of file content taken off the
@@ -377,8 +373,7 @@ public sealed class PhonePageServer(PhonePageOptions options)
 
         try
         {
-            (request, FormPart? first, IReadOnlyList<PhoneUploadFile>? manifest) =
-                await ReadUntilFirstFileAsync(reader, remote, declared, ct);
+            (request, FormPart? first) = await ReadUntilFirstFileAsync(reader, remote, ct);
 
             if (first is null)
             {
@@ -398,7 +393,7 @@ public sealed class PhonePageServer(PhonePageOptions options)
                 return false;
             }
 
-            result = await SaveAsync(reader, first, manifest, ct);
+            result = await SaveAsync(reader, first, request.Files, ct);
             await limited.CopyToAsync(Stream.Null, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
@@ -424,8 +419,8 @@ public sealed class PhonePageServer(PhonePageOptions options)
         return true;
     }
 
-    private async Task<(PhoneUploadRequest, FormPart?, IReadOnlyList<PhoneUploadFile>?)> ReadUntilFirstFileAsync(
-        MultipartReader reader, string remote, long? declared, CancellationToken ct)
+    private async Task<(PhoneUploadRequest, FormPart?)> ReadUntilFirstFileAsync(
+        MultipartReader reader, string remote, CancellationToken ct)
     {
         string sender = "";
         IReadOnlyList<PhoneUploadFile>? manifest = null;
@@ -445,15 +440,13 @@ public sealed class PhonePageServer(PhonePageOptions options)
             // A file input with nothing chosen still sends a part, with an empty name.
             if (part.FileName.Length == 0) continue;
 
-            IReadOnlyList<PhoneUploadFile> files = manifest ?? [new PhoneUploadFile(part.FileName, null)];
-            long? total = manifest is not null && manifest.All(f => f.Size is not null)
-                ? manifest.Sum(f => f.Size!.Value)
-                : declared;
+            if (manifest is null)
+                throw new AirDropHttpException("The upload did not list its files first.");
 
-            return (new PhoneUploadRequest(sender, remote, files, manifest is null, total), part, manifest);
+            return (new PhoneUploadRequest(sender, remote, manifest, manifest.Sum(f => f.Size)), part);
         }
 
-        return (new PhoneUploadRequest(sender, remote, [], false, declared), null, manifest);
+        return (new PhoneUploadRequest(sender, remote, [], 0), null);
     }
 
     /// <summary>
@@ -515,13 +508,12 @@ public sealed class PhonePageServer(PhonePageOptions options)
     /// <summary>
     /// Saves the files, all or nothing, through the same staging as AirDrop uploads.
     ///
-    /// With a list from the page, each file is saved under the name the list gave it and
-    /// may be no larger than the list said: what the person agreed to is what lands on disk,
-    /// so a page cannot show "photo.jpg" at the prompt and deliver "photo.exe". Without a
-    /// list, as from a Shortcut, the form's own names are used, made safe.
+    /// Each file is saved under the name the list gave it and may be no larger than the list
+    /// said, and the count must match: what the person agreed to is what lands on disk, so a
+    /// page cannot show "photo.jpg" at the prompt and deliver "photo.exe".
     /// </summary>
     private async Task<AirDropTransferResult> SaveAsync(
-        MultipartReader reader, FormPart first, IReadOnlyList<PhoneUploadFile>? manifest, CancellationToken ct)
+        MultipartReader reader, FormPart first, IReadOnlyList<PhoneUploadFile> manifest, CancellationToken ct)
     {
         Directory.CreateDirectory(options.DownloadDirectory);
         using var incoming = new IncomingFiles(options.DownloadDirectory, options.Log);
@@ -536,20 +528,14 @@ public sealed class PhonePageServer(PhonePageOptions options)
                 if (index >= options.MaxFilesPerUpload)
                     throw new AirDropHttpException($"More than {options.MaxFilesPerUpload:N0} files in one upload.");
 
-                string name = sentName;
-                long limit = options.MaxUploadBytes;
+                if (index >= manifest.Count)
+                    throw new AirDropHttpException("The upload holds more files than it listed.");
 
-                if (manifest is not null)
-                {
-                    if (index >= manifest.Count)
-                        throw new AirDropHttpException("The upload holds more files than it listed.");
+                string name = manifest[index].Name;
+                long limit = manifest[index].Size;
 
-                    name = manifest[index].Name;
-                    limit = manifest[index].Size ?? limit;
-
-                    if (name != sentName)
-                        options.Log?.Invoke($"phone page: file {PeerText.Printable(sentName)} saved under its listed name {PeerText.Printable(name)}");
-                }
+                if (name != sentName)
+                    options.Log?.Invoke($"phone page: file {PeerText.Printable(sentName)} saved under its listed name {PeerText.Printable(name)}");
 
                 string destination = Destination(options.DownloadDirectory, name);
                 options.Log?.Invoke($"phone page: receiving {PeerText.Printable(Path.GetFileName(destination))}");
@@ -564,7 +550,7 @@ public sealed class PhonePageServer(PhonePageOptions options)
             part = await reader.ReadNextPartAsync(ct);
         }
 
-        if (manifest is not null && index != manifest.Count)
+        if (index != manifest.Count)
             throw new AirDropHttpException($"The upload listed {manifest.Count} files and held {index}.");
 
         return incoming.Commit();
@@ -634,12 +620,10 @@ public sealed class PhonePageServer(PhonePageOptions options)
     {
         string names = string.Join(", ", request.Files.Take(5).Select(f => PeerText.Printable(f.Name)));
         if (request.Files.Count > 5) names += $" and {request.Files.Count - 5} more";
-        if (request.MoreMayFollow) names += ", maybe more";
 
         string sender = request.Sender.Length > 0 ? $" as {PeerText.Printable(request.Sender)}" : "";
-        string total = request.TotalBytes is { } bytes ? $", {bytes:N0} bytes" : "";
 
-        return $"{names}{total}{sender}";
+        return $"{names}, {request.TotalBytes:N0} bytes{sender}";
     }
 
     /// <summary>

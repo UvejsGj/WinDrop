@@ -452,9 +452,8 @@ static async Task<int> LinkAsync(string[] args, CancellationToken ct)
 
     Directory.CreateDirectory(directory);
 
-    // A fresh secret every run. The app keeps one across restarts so a Shortcut keeps
-    // working; the CLI is for sessions, and a link that dies with the process is the safer
-    // default for something whose output may end up pasted in a report.
+    // A fresh secret every run, as in the app: a link dies with the process that made it,
+    // which matters for output that may end up pasted in a report.
     string token = PhonePageServer.NewToken();
 
     var server = new PhonePageServer(new PhonePageOptions

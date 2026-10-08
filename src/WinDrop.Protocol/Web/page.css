@@ -90,13 +90,6 @@ h2 { margin: 0 0 14px; font-size: 20px; overflow-wrap: anywhere; }
 .button + .button, .files + .button { margin-top: 12px; }
 .button:disabled, .button.disabled { opacity: 0.45; cursor: default; }
 
-.button.small {
-  display: inline-block;
-  width: auto;
-  padding: 8px 14px;
-  font-size: 15px;
-}
-
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -135,23 +128,6 @@ h2 { margin: 0 0 14px; font-size: 20px; overflow-wrap: anywhere; }
 .status { margin: 12px 0 0; min-height: 1.4em; color: var(--secondary); }
 .status.ok { color: var(--ok); font-weight: 600; }
 .status.bad { color: var(--bad); }
-
-details summary { font-weight: 600; cursor: pointer; }
-details ol { padding-left: 22px; }
-details li { margin: 8px 0; }
-
-.copy-row { display: flex; gap: 8px; margin-top: 6px; }
-
-.copy-row input {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 8px 10px;
-  font: 14px ui-monospace, Menlo, Consolas, monospace;
-  background: var(--bg);
-  color: var(--text);
-}
 
 .note { color: var(--secondary); font-size: 15px; }
 

@@ -156,7 +156,6 @@ public class PhonePageTests : IDisposable
         Assert.Equal("iPhone", request.Sender);
         Assert.Equal("127.0.0.1", request.RemoteAddress);
         Assert.Equal(["IMG_0001.JPG", "notes.txt"], request.Files.Select(f => f.Name));
-        Assert.False(request.MoreMayFollow);
         Assert.Equal(8, request.TotalBytes);
     }
 
@@ -245,29 +244,19 @@ public class PhonePageTests : IDisposable
     }
 
     [Fact]
-    public async Task AShortcutStyleUploadIsAskedAboutByItsFirstNameAndLength()
+    public async Task AnUploadThatDoesNotListItsFilesIsRefusedWithoutAsking()
     {
-        // A Shortcut sends no list: the question names the first file, says more may
-        // follow, and gives the whole request's length as the bound.
+        // The list is what the person is shown. Without one there is nothing honest to ask
+        // about, so the question is never put.
         var asked = new List<PhoneUploadRequest>();
         Running page = Start(Answer(true, asked));
 
-        var form = new MultipartFormDataContent
-        {
-            { new ByteArrayContent("one"u8.ToArray()), "file", "IMG_0002.HEIC" },
-            { new ByteArrayContent("two"u8.ToArray()), "file", "IMG_0003.HEIC" },
-        };
-        long length = (await form.ReadAsByteArrayAsync()).Length;
+        HttpResponseMessage response = await page.Client.PostAsync("upload", Form(
+            null, ("IMG_0002.HEIC", "one"), ("IMG_0003.HEIC", "two")));
 
-        HttpResponseMessage response = await page.Client.PostAsync("upload", form);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(["IMG_0002.HEIC", "IMG_0003.HEIC"], Saved());
-
-        PhoneUploadRequest request = Assert.Single(asked);
-        Assert.Equal("IMG_0002.HEIC", request.Files.Single().Name);
-        Assert.True(request.MoreMayFollow);
-        Assert.Equal(length, request.TotalBytes);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty(asked);
+        Assert.Empty(Saved());
     }
 
     [Fact]
@@ -408,16 +397,16 @@ public class PhonePageTests : IDisposable
     // ---- the console -------------------------------------------------------
 
     [Fact]
-    public void TheConsolePromptCleansWhatThePhoneSentAndSaysWhenMoreMayFollow()
+    public void TheConsolePromptCleansWhatThePhoneSent()
     {
         var request = new PhoneUploadRequest(
-            "iPhone\u001b[2J", "192.0.2.7", [new PhoneUploadFile("evil\u202Etxt.exe", null)], MoreMayFollow: true, TotalBytes: 1234);
+            "iPhone\u001b[2J", "192.0.2.7", [new PhoneUploadFile("evil\u202Etxt.exe", 1234)], TotalBytes: 1234);
 
         IReadOnlyList<string> lines = ConsoleText.DescribeUpload(request, autoAccepted: false);
 
         Assert.DoesNotContain(lines, line => line.Any(char.IsControl) || line.Contains('\u202E'));
-        Assert.Contains(lines, line => line.Contains("possibly more"));
-        Assert.Contains(lines, line => line.Contains("1,234 bytes"));
+        Assert.Contains(lines, line => line.Contains("evil?txt.exe"));
+        Assert.Contains(lines, line => line.Contains("1,234 bytes in all"));
     }
 
     [Fact]

@@ -68,9 +68,7 @@ internal static class ConsoleText
 
     /// <summary>
     /// The phone page's version of <see cref="DescribeRequest"/>. The sender's label and the
-    /// file names are the phone's to choose, so all of it is cleaned. Without a list from the
-    /// page, as from a Shortcut, only the first file is known when the question is asked, and
-    /// the prompt says so rather than implying that is all.
+    /// file names are the phone's to choose, so all of it is cleaned.
     /// </summary>
     public static IReadOnlyList<string> DescribeUpload(PhoneUploadRequest request, bool autoAccepted)
     {
@@ -84,18 +82,9 @@ internal static class ConsoleText
         };
 
         foreach (PhoneUploadFile file in request.Files)
-        {
-            lines.Add(file.Size is { } size
-                ? $"  {PeerText.Printable(file.Name)}  ({size:N0} bytes)"
-                : $"  {PeerText.Printable(file.Name)}");
-        }
+            lines.Add($"  {PeerText.Printable(file.Name)}  ({file.Size:N0} bytes)");
 
-        if (request.MoreMayFollow)
-            lines.Add("  and possibly more files: this sender does not list them in advance");
-
-        if (request.TotalBytes is { } total)
-            lines.Add($"  {total:N0} bytes in all");
-
+        lines.Add($"  {request.TotalBytes:N0} bytes in all");
         return lines;
     }
 

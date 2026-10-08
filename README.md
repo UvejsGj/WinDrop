@@ -18,7 +18,7 @@ Wi-Fi. It is not AirDrop, but it needs no extra hardware and no Linux.
 | 4. Discover → Ask → Upload state machine | **done** — verified against opendrop, an independent implementation |
 | 5. DVZip compression + CPIO `newc` archive | **done** — CPIO checked against bsdtar/libarchive |
 | 6. Reaching an iPhone over AirDrop | **working, slowly and intermittently** — real iPhones on iOS 26.6, 27.0 and 27.0.1 have AirDropped files to WinDrop, arriving intact. Over Linux + OWL, at 12–27 KB/s and roughly one transfer in three in recent sessions, on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
-| 7. The phone page: iPhone ↔ Windows over ordinary Wi-Fi, not AirDrop | **working with a real iPhone**: on iOS 27.0.1 the camera read the code, one photo and then five in one send arrived intact on plain Windows, and a decline reached the phone as "Declined". No Linux and no extra hardware. Downloads to the phone and the Shortcut are not yet tried. See [phone-page.md](docs/phone-page.md) |
+| 7. The phone page: iPhone ↔ Windows over ordinary Wi-Fi, not AirDrop | **working with a real iPhone**: on iOS 27.0.1 the camera read the code, one photo and then five in one send arrived intact on plain Windows, a decline reached the phone as "Declined", and five images and a video downloaded from the PC to the phone. No Linux and no extra hardware. See [phone-page.md](docs/phone-page.md) |
 
 386 tests, all passing.
 
@@ -95,8 +95,7 @@ with `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
 **The phone page** reaches any phone on the same Wi-Fi, an iPhone included. In the app,
 the phone button in the header shows a QR code; `link` prints one in the terminal. The
 phone opens the page in its browser to send files to the PC, which asks before saving
-anything, and to download files the PC offers. The page also explains how to add a *Send
-to WinDrop* Shortcut to the iPhone's share sheet. It uses plain HTTP with a secret token in
+anything, and to download files the PC offers. It uses plain HTTP with a secret token in
 the address, so it is meant for trusted networks; [phone-page.md](docs/phone-page.md) has
 the reasoning, the security model and what is still untested.
 

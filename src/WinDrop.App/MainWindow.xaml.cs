@@ -132,9 +132,10 @@ public partial class MainWindow : Window
         }
 
         // Started on its own: AirDrop failing to start is no reason for the phone page not to.
+        // A new secret every run, so a link handed out yesterday does not still work today.
         try
         {
-            StartPhonePage(PhoneLinkStore.LoadOrCreate());
+            StartPhonePage(PhonePageServer.NewToken());
         }
         catch (Exception ex)
         {
@@ -308,8 +309,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// The phone page's uploads, on the same sheet. Asked before any file in the upload is
-    /// read, and every name on it came from the phone, so it is cleaned the same way. A
-    /// Shortcut does not list its files in advance, and then the sheet says more may follow.
+    /// read, and every name on it came from the phone, so it is cleaned the same way.
     /// </summary>
     private Task<bool> AskUserAsync(PhoneUploadRequest request, CancellationToken ct)
     {
@@ -318,13 +318,11 @@ public partial class MainWindow : Window
         string names = string.Join(", ", request.Files.Take(3).Select(f => PeerText.Printable(f.Name)));
         if (request.Files.Count > 3) names += $" and {request.Files.Count - 3} more";
 
-        string size = request.TotalBytes is { } total ? $" · {FormatSize(total)}" : "";
+        string size = $" · {FormatSize(request.TotalBytes)}";
 
-        string detail = request.MoreMayFollow
-            ? $"wants to share “{names}” and possibly more{size}"
-            : request.Files.Count == 1
-                ? $"wants to share “{names}”{size}"
-                : $"wants to share {request.Files.Count} items · {names}{size}";
+        string detail = request.Files.Count == 1
+            ? $"wants to share “{names}”{size}"
+            : $"wants to share {request.Files.Count} items · {names}{size}";
 
         detail += $"\nfrom the phone page, at {request.RemoteAddress}";
 
@@ -540,9 +538,9 @@ public partial class MainWindow : Window
 
         try
         {
-            StartPhonePage(PhoneLinkStore.Renew());
+            StartPhonePage(PhonePageServer.NewToken());
             RefreshPhoneSheet();
-            SetStatus("New link. The old one, and any Shortcut using it, no longer works");
+            SetStatus("New link. The old one no longer works");
         }
         catch (Exception ex)
         {

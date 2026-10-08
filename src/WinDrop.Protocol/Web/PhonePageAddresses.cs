@@ -10,10 +10,10 @@ public static class PhonePageAddresses
     /// <summary>
     /// IPv4 addresses a phone on the same network could reach, best first.
     ///
-    /// IPv4 because the address ends up in a QR code and a Shortcut, where a scoped IPv6
-    /// link-local address would not survive. Ranked: an interface with a default gateway
-    /// first, since virtual switches (WSL, Hyper-V, VM host-only networks) have none and
-    /// their addresses are unreachable from a phone; then Wi-Fi before Ethernet before
+    /// IPv4 because the address ends up in a QR code and a phone's address bar, where a
+    /// scoped IPv6 link-local address would not survive. Ranked: an interface with a default
+    /// gateway first, since virtual switches (WSL, Hyper-V, VM host-only networks) have none
+    /// and their addresses are unreachable from a phone; then Wi-Fi before Ethernet before
     /// anything else, since the phone is on Wi-Fi; then private ranges before public ones.
     /// Self-assigned 169.254 addresses mean DHCP failed, and are left out.
     /// </summary>

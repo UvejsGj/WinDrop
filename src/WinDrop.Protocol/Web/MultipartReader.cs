@@ -14,7 +14,7 @@ internal sealed record FormPart(string? Name, string? FileName, string? ContentT
 
 /// <summary>
 /// A streaming multipart/form-data reader (RFC 7578, framing from RFC 2046), the way a
-/// browser's file upload and an iOS Shortcut's form both arrive.
+/// browser's file upload arrives.
 ///
 /// STREAMING, BECAUSE A PART CAN BE A VIDEO. Each part's content is handed on as it is
 /// read and never held whole. The one subtlety is the delimiter, CRLF "--" boundary,

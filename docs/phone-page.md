@@ -25,9 +25,8 @@ windrop link [--dir <path>] [--port <n>] [--yes] [--offer <file>]...
 
 It prints the code in the terminal and serves until Ctrl+C.
 
-**The share sheet:** the page explains how to make an iOS Shortcut, *Send to WinDrop*,
-that appears when you tap Share in Photos or Files. The Shortcut posts the shared files
-to the page's upload address as a form.
+Each run of the app or the CLI makes a new link, so after restarting WinDrop the phone
+scans the code again.
 
 ### If the phone cannot open the page
 
@@ -74,9 +73,9 @@ saved under the name the list gave it, and may be no larger than the list said. 
 must match. A page cannot show "photo.jpg" at the prompt and deliver "photo.exe". Any
 mismatch fails the whole upload, and nothing is kept.
 
-**A Shortcut sends no list.** Then only the first file's name is known when the question
-is asked, so the prompt says that more files may follow, and gives the request's
-Content-Length as the honest bound on the total.
+**No list, no question.** An upload that does not send the list before its files is
+refused before anyone is asked. The list is what the person is shown, so without one there
+is nothing honest to ask about.
 
 Files are staged and committed all or nothing by [`IncomingFiles`](../src/WinDrop.Protocol/IncomingFiles.cs),
 the same class the AirDrop receiver uses. A failed or refused upload leaves nothing
@@ -119,14 +118,13 @@ to the iPhone's Files app.
 2. **The prompt.** Anyone who has the link can *ask* to send files, but nothing is written
    until the person at the PC agrees.
 
-The app keeps its token across restarts, because a Shortcut has the address written into
-it. **New link** replaces it, which is how you take the address back from a phone you no
-longer want sending. The CLI makes a new one every run, since its output may end up pasted
-in a report.
+The app and the CLI make a new token every run, so a link stops working when WinDrop
+closes. **New link** in the app replaces it while running, which is how you take the
+address back from a phone you no longer want sending.
 
-**Plain HTTP, on purpose.** Safari would show a full-page warning for a self-signed
-certificate, and a Shortcut refuses one outright, so HTTPS would mean teaching people to
-click through certificate warnings. Instead:
+**Plain HTTP, on purpose.** Safari shows a full-page warning for a self-signed
+certificate, so HTTPS would mean teaching people to click through certificate warnings.
+Instead:
 
 - **Protected:** the traffic, by the Wi-Fi's own encryption, from anyone outside the
   network. The page and its files, by the token, from anyone on the network who does not
@@ -168,7 +166,9 @@ That is why the page and this document say it is for home and other trusted netw
   (it starts `FF D8`, JFIF) with a lowercase `.jpeg` name. Safari converts photos picked
   through a web page's file input, which is what most people want on Windows. The other
   side is that the HEIC original, and whatever metadata the conversion drops, does not
-  arrive. The Shortcut may behave differently; that is untested.
+  arrive.
+- **PC to iPhone:** five images, and then a video, offered by the PC downloaded to the
+  phone.
 
 **Verified on this machine:**
 
@@ -188,10 +188,17 @@ ignored, the token unchecked, a listed size not enforced, a colon left in a name
 
 **Not yet verified with a real iPhone:**
 
-- downloads from the PC to the phone
-- videos
-- how long Safari and Shortcuts wait while the PC's prompt is open (probably about 60
-  seconds of no progress)
-- the Shortcut steps as written, on the current iOS
-- whether `<pc-name>.local` would work in place of the IP address, which would survive
-  the PC getting a new address
+- a video from the phone to the PC
+- how long Safari waits while the PC's prompt is open (probably about 60 seconds of no
+  progress)
+
+## Set aside for now: a share-sheet Shortcut
+
+The first version also explained how to build an iOS Shortcut, *Send to WinDrop*, that
+would appear when you tap Share in Photos. It was tried on 2026-10-08 and set aside. A
+Shortcut cannot send the list of files ahead of them, so supporting it meant a vaguer
+prompt that named only the first file and said more might follow, and it meant a link
+that survived restarts, since the Shortcut stores the address. Without it, every prompt
+lists exactly what will arrive, and every link dies with the run that made it. Both came
+back out with the Shortcut; the commit that removed them is the place to start if it
+returns.
