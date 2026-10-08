@@ -206,10 +206,12 @@
                    Foreground="{StaticResource SecondaryLabel}" Margin="1,1,0,0"/>
       </StackPanel>
 
-      <glass:GlassPanel Width="84" Height="42" CornerRadius="21" Margin="0,26,20,0"
+      <glass:GlassPanel Width="122" Height="42" CornerRadius="21" Margin="0,26,20,0"
                         HorizontalAlignment="Right" VerticalAlignment="Top"
                         Frost="0.18" RimWidth="12" Refraction="10">
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <Button Style="{StaticResource IconButton}" Content="&#xE8EA;" FontSize="14" Click="OnShowPhone"
+                  ToolTip="Send to or from a phone, in its browser"/>
           <Button Style="{StaticResource IconButton}" Content="&#xE921;" Click="OnMinimize" ToolTip="Minimize"/>
           <Button Style="{StaticResource IconButton}" Content="&#xE8BB;" Click="OnClose" ToolTip="Close"/>
         </StackPanel>
@@ -236,8 +238,9 @@
       <StackPanel x:Name="EmptyState" Canvas.Left="40" Canvas.Top="438" Width="360">
         <TextBlock Text="Looking for people nearby…" FontSize="14" FontWeight="Medium"
                    Foreground="{StaticResource SecondaryLabel}" TextAlignment="Center"/>
-        <TextBlock Text="iPhones only appear over AWDL" FontSize="12"
-                   Foreground="{StaticResource TertiaryLabel}" TextAlignment="Center" Margin="0,4,0,0"/>
+        <TextBlock Text="iPhones only appear here over AWDL. For one on this Wi-Fi, use the phone button above"
+                   FontSize="12" Foreground="{StaticResource TertiaryLabel}" TextAlignment="Center"
+                   TextWrapping="Wrap" Margin="20,4,20,0"/>
       </StackPanel>
 
       <ItemsControl x:Name="PeerList" Width="440" Height="700" ItemTemplate="{StaticResource PeerTile}">
@@ -307,6 +310,53 @@
                 Click="OnChooseFiles"/>
       </Grid>
     </glass:GlassPanel>
+
+    <!-- ========================================================== Phone sheet -->
+    <!--
+      The phone page's code. Below the consent sheet in the stacking order, because the most
+      likely moment for a consent prompt is while this is open and a phone is sending.
+    -->
+    <Grid x:Name="PhoneSheet" Visibility="Collapsed">
+      <Rectangle x:Name="PhoneScrim" Fill="#99000000" MouseLeftButtonUp="OnHidePhone"/>
+
+      <glass:GlassPanel CornerRadius="36" Margin="12,0,12,12"
+                        VerticalAlignment="Bottom" Padding="24,26,24,24"
+                        Frost="0.5" BlurRadius="22" RimWidth="24" Refraction="20">
+        <glass:GlassPanel.RenderTransform>
+          <TranslateTransform x:Name="PhoneSlide"/>
+        </glass:GlassPanel.RenderTransform>
+        <StackPanel>
+          <TextBlock Text="Your phone" FontFamily="{StaticResource DisplayFont}" FontSize="23"
+                     FontWeight="SemiBold" Foreground="{StaticResource Label}" TextAlignment="Center"/>
+          <TextBlock FontSize="13.5" Foreground="{StaticResource SecondaryLabel}" TextAlignment="Center"
+                     TextWrapping="Wrap" Margin="0,6,0,16"
+                     Text="Scan with the Camera on a phone on this Wi-Fi, then send files both ways in its browser. No app needed."/>
+
+          <!-- White, whatever the theme: a scanner expects dark modules on light. -->
+          <Border Background="White" CornerRadius="18" Padding="6" HorizontalAlignment="Center">
+            <Image x:Name="PhoneCode" Width="200" Height="200"
+                   RenderOptions.EdgeMode="Aliased" SnapsToDevicePixels="True"/>
+          </Border>
+
+          <TextBox x:Name="PhoneUrl" IsReadOnly="True" Background="Transparent" BorderThickness="0"
+                   Foreground="{StaticResource TertiaryLabel}" FontSize="11.5" TextAlignment="Center"
+                   HorizontalAlignment="Stretch" Margin="0,10,0,0"/>
+          <TextBlock x:Name="PhoneOffer" FontSize="13" Foreground="{StaticResource SecondaryLabel}"
+                     TextAlignment="Center" TextWrapping="Wrap" Margin="0,6,0,0"/>
+
+          <Grid Margin="0,18,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="12"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Button Content="New link" Style="{StaticResource TintedCapsuleButton}" Height="46" Click="OnRenewPhoneLink"
+                    ToolTip="Makes a new address. The old one, and any Shortcut using it, stops working."/>
+            <Button Grid.Column="2" Content="Done" Style="{StaticResource CapsuleButton}" Height="46" Click="OnHidePhone"/>
+          </Grid>
+        </StackPanel>
+      </glass:GlassPanel>
+    </Grid>
 
     <!-- ================================================================ Sheet -->
     <Grid x:Name="ConsentSheet" Visibility="Collapsed">

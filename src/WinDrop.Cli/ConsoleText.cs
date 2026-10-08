@@ -1,4 +1,6 @@
+using System.Text;
 using WinDrop.Protocol;
+using WinDrop.Protocol.Web;
 
 namespace WinDrop.Cli;
 
@@ -60,4 +62,86 @@ internal static class ConsoleText
         LogLine(time, handshakeDone
             ? $"connection failed: {message}"
             : $"connection failed during the TLS handshake, before any request: {message}");
+
+    /// <summary>One prompt at a time: the phone page serves connections in parallel.</summary>
+    public static readonly SemaphoreSlim PromptGate = new(1, 1);
+
+    /// <summary>
+    /// The phone page's version of <see cref="DescribeRequest"/>. The sender's label and the
+    /// file names are the phone's to choose, so all of it is cleaned. Without a list from the
+    /// page, as from a Shortcut, only the first file is known when the question is asked, and
+    /// the prompt says so rather than implying that is all.
+    /// </summary>
+    public static IReadOnlyList<string> DescribeUpload(PhoneUploadRequest request, bool autoAccepted)
+    {
+        string sender = request.Sender.Length > 0 ? PeerText.Printable(request.Sender) : "A phone";
+
+        var lines = new List<string>
+        {
+            autoAccepted
+                ? $"Auto-accepting an upload from '{sender}' at {request.RemoteAddress} (--yes)"
+                : $"'{sender}' at {request.RemoteAddress} wants to send:",
+        };
+
+        foreach (PhoneUploadFile file in request.Files)
+        {
+            lines.Add(file.Size is { } size
+                ? $"  {PeerText.Printable(file.Name)}  ({size:N0} bytes)"
+                : $"  {PeerText.Printable(file.Name)}");
+        }
+
+        if (request.MoreMayFollow)
+            lines.Add("  and possibly more files: this sender does not list them in advance");
+
+        if (request.TotalBytes is { } total)
+            lines.Add($"  {total:N0} bytes in all");
+
+        return lines;
+    }
+
+    /// <summary>
+    /// A QR code in block characters, two rows of modules per line so the modules come out
+    /// roughly square.
+    ///
+    /// Light modules are drawn as blocks and dark ones as blanks, so on the usual dark
+    /// terminal the code reads dark on light, the way scanners expect. The quiet zone is the
+    /// standard's four modules, drawn light like the rest; without it a scanner cannot find
+    /// the code's edge against a dark background.
+    /// </summary>
+    public static IReadOnlyList<string> QrLines(QrCode code)
+    {
+        const int quiet = 4;
+        int size = code.Size + quiet * 2;
+
+        bool Light(int row, int column)
+        {
+            if (row >= size) return false;
+
+            int r = row - quiet, c = column - quiet;
+            bool inside = r >= 0 && c >= 0 && r < code.Size && c < code.Size;
+            return !inside || !code[r, c];
+        }
+
+        var lines = new List<string>();
+
+        for (int row = 0; row < size; row += 2)
+        {
+            var line = new StringBuilder(size);
+
+            for (int column = 0; column < size; column++)
+            {
+                line.Append((Light(row, column), Light(row + 1, column)) switch
+                {
+                    (true, true) => '█',  // full block
+                    (true, false) => '▀', // upper half
+                    (false, true) => '▄', // lower half
+                    _ => ' ',
+                });
+            }
+
+            lines.Add(line.ToString());
+        }
+
+        return lines;
+    }
 }

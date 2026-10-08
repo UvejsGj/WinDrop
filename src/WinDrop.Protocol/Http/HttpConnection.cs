@@ -211,6 +211,33 @@ public sealed class HttpConnection(Stream stream, bool ownsStream = true) : IAsy
         await _stream.FlushAsync(ct);
     }
 
+    /// <summary>
+    /// A response whose body is streamed rather than held, with its length declared up front.
+    /// For the phone page's downloads, where the body is a file of any size. The length is
+    /// declared because a phone browser shows a download's progress only when it knows the
+    /// size. <paramref name="writeBody"/> must write exactly <paramref name="length"/> bytes;
+    /// pass null to send the head alone, which is the whole answer to a HEAD request.
+    /// </summary>
+    public async Task WriteStreamingResponseAsync(
+        int status,
+        string reason,
+        HttpHeaders headers,
+        long length,
+        Func<Stream, CancellationToken, Task>? writeBody,
+        CancellationToken ct = default)
+    {
+        headers.Set("Content-Length", length.ToString(CultureInfo.InvariantCulture));
+
+        var head = new StringBuilder();
+        head.Append("HTTP/1.1 ").Append(status.ToString(CultureInfo.InvariantCulture))
+            .Append(' ').Append(reason).Append("\r\n");
+        AppendHeaders(head, headers);
+
+        await _stream.WriteAsync(Encoding.ASCII.GetBytes(head.ToString()), ct);
+        if (writeBody is not null) await writeBody(_stream, ct);
+        await _stream.FlushAsync(ct);
+    }
+
     private static void AppendHeaders(StringBuilder head, HttpHeaders headers)
     {
         foreach (var (name, value) in headers)

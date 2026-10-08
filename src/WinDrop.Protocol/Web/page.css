@@ -1,0 +1,158 @@
+:root {
+  --bg: #f2f2f7;
+  --card: #ffffff;
+  --text: #1c1c1e;
+  --secondary: #6c6c70;
+  --line: #e5e5ea;
+  --accent: #0a84ff;
+  --accent-text: #ffffff;
+  --ok: #248a3d;
+  --bad: #d70015;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --card: #1c1c1e;
+    --text: #f2f2f7;
+    --secondary: #98989f;
+    --line: #38383a;
+    --ok: #30d158;
+    --bad: #ff453a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* The display rules below would otherwise beat the hidden attribute the script relies on. */
+[hidden] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 17px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+main {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+}
+
+header { padding: 8px 4px 20px; }
+
+.eyebrow {
+  margin: 0;
+  color: var(--secondary);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 2px 0 6px;
+  font-size: 32px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+h2 { margin: 0 0 14px; font-size: 20px; overflow-wrap: anywhere; }
+
+.lede { margin: 0; color: var(--secondary); }
+
+.card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 14px;
+  padding: 15px 18px;
+  font: inherit;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  background: var(--line);
+  color: var(--text);
+}
+
+.button.primary { background: var(--accent); color: var(--accent-text); }
+.button + .button, .files + .button { margin-top: 12px; }
+.button:disabled, .button.disabled { opacity: 0.45; cursor: default; }
+
+.button.small {
+  display: inline-block;
+  width: auto;
+  padding: 8px 14px;
+  font-size: 15px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.files { list-style: none; margin: 12px 0 0; padding: 0; }
+.files:empty { display: none; }
+
+.files li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.files li:first-child { border-top: 0; }
+.files .name { overflow-wrap: anywhere; }
+.files a { color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
+.files .size { color: var(--secondary); white-space: nowrap; }
+
+.progress {
+  height: 6px;
+  margin-top: 14px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.bar { width: 0; height: 100%; background: var(--accent); transition: width 0.2s; }
+
+.status { margin: 12px 0 0; min-height: 1.4em; color: var(--secondary); }
+.status.ok { color: var(--ok); font-weight: 600; }
+.status.bad { color: var(--bad); }
+
+details summary { font-weight: 600; cursor: pointer; }
+details ol { padding-left: 22px; }
+details li { margin: 8px 0; }
+
+.copy-row { display: flex; gap: 8px; margin-top: 6px; }
+
+.copy-row input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: 14px ui-monospace, Menlo, Consolas, monospace;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.note { color: var(--secondary); font-size: 15px; }
+
+footer { padding: 4px; color: var(--secondary); font-size: 13px; }

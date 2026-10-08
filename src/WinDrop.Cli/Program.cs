@@ -1,20 +1,24 @@
 using System.Globalization;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using WinDrop.Cli;
 using WinDrop.Protocol;
 using WinDrop.Protocol.Discovery;
 using WinDrop.Protocol.Tls;
+using WinDrop.Protocol.Web;
 
-// WinDrop CLI. Two commands, both over the infrastructure-Wi-Fi transport:
+// WinDrop CLI. AirDrop over the infrastructure-Wi-Fi transport, and the phone page:
 //
 //   receive [--dir <path>]   advertise over mDNS and accept transfers
 //   send <file> [file...]    browse for a peer, ask, and upload
 //   browse                   list peers and stop
+//   link                     the phone page: a QR code any phone's browser can open
 //
-// This reaches another WinDrop instance, opendrop, or a Mac running with
+// AirDrop here reaches another WinDrop instance, opendrop, or a Mac running with
 // BrowseAllInterfaces enabled. It does NOT reach an iPhone: iOS binds AirDrop's browser
-// to awdl0, which Windows cannot join. See docs/adr-001-transport-selection.md.
+// to awdl0, which Windows cannot join. See docs/adr-001-transport-selection.md. The phone
+// page does reach an iPhone, as a web page rather than as AirDrop: see docs/phone-page.md.
 
 if (args.Length == 0)
 {
@@ -32,6 +36,7 @@ try
         "receive" => await ReceiveAsync(args, stopping.Token),
         "send" => await SendAsync(args, stopping.Token),
         "browse" => await BrowseAsync(args, stopping.Token),
+        "link" => await LinkAsync(args, stopping.Token),
         _ => PrintUsage(),
     };
 }
@@ -60,6 +65,8 @@ static int PrintUsage()
           windrop receive [--dir <path>] [--port <n>] [--flags <hex>] [--yes] [--no-early-ask]
           windrop send [--to <name>| --peer <host>] [--icon <image>] <file> [file...]
           windrop browse                   list nearby peers
+          windrop link [--dir <path>] [--port <n>] [--yes] [--offer <file>]...
+                                           the phone page: scan its code with a phone on this Wi-Fi
 
         Add --bridge <host> to any command to use a Linux box running OWL as the radio.
 
@@ -69,6 +76,9 @@ static int PrintUsage()
         An iPhone only looks for AirDrop on awdl0, a link layer Windows cannot join.
         It is reachable from Linux running OWL, directly or through --bridge.
         See docs/adr-001-transport-selection.md.
+
+        `link` needs neither: an iPhone opens a page in Safari to send and receive files,
+        over ordinary Wi-Fi. See docs/phone-page.md.
         """);
 
     return 1;
@@ -419,6 +429,116 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
     return 0;
 }
 
+
+static async Task<int> LinkAsync(string[] args, CancellationToken ct)
+{
+    string directory = ArgumentValue(args, "--dir")
+        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "WinDrop");
+
+    bool autoAccept = args.Contains("--yes", StringComparer.OrdinalIgnoreCase);
+    int port = int.TryParse(ArgumentValue(args, "--port"), out int requested) ? requested : PhonePageServer.DefaultPort;
+
+    var offers = new List<string>();
+    for (int i = 1; i < args.Length - 1; i++)
+    {
+        if (string.Equals(args[i], "--offer", StringComparison.OrdinalIgnoreCase)) offers.Add(args[++i]);
+    }
+
+    foreach (string path in offers.Where(p => !File.Exists(p)))
+    {
+        Console.Error.WriteLine($"Not found, or a folder: {path}");
+        return 1;
+    }
+
+    Directory.CreateDirectory(directory);
+
+    // A fresh secret every run. The app keeps one across restarts so a Shortcut keeps
+    // working; the CLI is for sessions, and a link that dies with the process is the safer
+    // default for something whose output may end up pasted in a report.
+    string token = PhonePageServer.NewToken();
+
+    var server = new PhonePageServer(new PhonePageOptions
+    {
+        DownloadDirectory = directory,
+        Token = token,
+        ComputerName = Environment.MachineName,
+        ConsentHandler = autoAccept ? AutoAcceptUploadAsync : PromptUploadAsync,
+        Log = line => Console.WriteLine(ConsoleText.LogLine(DateTime.Now, line)),
+    });
+
+    int actualPort = server.Listen(port);
+
+    if (offers.Count > 0)
+    {
+        foreach (PhoneOfferedFile file in server.OfferFiles(offers))
+            Console.WriteLine($"Offering {file.Name} ({file.Size:N0} bytes)");
+    }
+
+    IReadOnlyList<IPAddress> addresses = PhonePageAddresses.Find();
+
+    if (addresses.Count == 0)
+    {
+        Console.Error.WriteLine("This PC has no network address a phone could reach. Is it on Wi-Fi?");
+        return 1;
+    }
+
+    string url = PhonePageServer.PageUrl(addresses[0].ToString(), actualPort, token);
+
+    // The code is drawn in block characters, which the console needs UTF-8 to show.
+    Console.OutputEncoding = Encoding.UTF8;
+    Console.WriteLine();
+    foreach (string line in ConsoleText.QrLines(QrCode.Encode(url))) Console.WriteLine(line);
+    Console.WriteLine();
+    Console.WriteLine("Scan it with the iPhone's Camera, on the same Wi-Fi as this PC, or open:");
+    Console.WriteLine($"  {url}");
+
+    foreach (IPAddress other in addresses.Skip(1))
+        Console.WriteLine($"  or {PhonePageServer.PageUrl(other.ToString(), actualPort, token)}");
+
+    Console.WriteLine();
+    Console.WriteLine("Anyone with this link can ask to send you files and can download what is offered.");
+    Console.WriteLine("It stops working when this does.");
+    if (autoAccept) Console.WriteLine("--yes: uploads are accepted without asking. For testing only.");
+    Console.WriteLine($"Saving to {directory}");
+    Console.WriteLine("Ctrl+C to stop.");
+    Console.WriteLine();
+
+    await server.RunAsync(ct);
+    return 0;
+}
+
+static Task<bool> AutoAcceptUploadAsync(PhoneUploadRequest request, CancellationToken ct)
+{
+    foreach (string line in ConsoleText.DescribeUpload(request, autoAccepted: true))
+        Console.WriteLine(line);
+
+    return Task.FromResult(true);
+}
+
+static async Task<bool> PromptUploadAsync(PhoneUploadRequest request, CancellationToken ct)
+{
+    // Uploads arrive on connections of their own, so two can ask at once; one console
+    // cannot sensibly take two answers at the same time.
+    await ConsoleText.PromptGate.WaitAsync(ct);
+
+    try
+    {
+        Console.WriteLine();
+        foreach (string line in ConsoleText.DescribeUpload(request, autoAccepted: false))
+            Console.WriteLine(line);
+
+        Console.Write("Accept? [y/N] ");
+        string? answer = Console.ReadLine();
+
+        bool accepted = answer?.Trim().StartsWith('y') == true;
+        Console.WriteLine(accepted ? "Accepted." : "Declined.");
+        return accepted;
+    }
+    finally
+    {
+        ConsoleText.PromptGate.Release();
+    }
+}
 
 /// <summary>
 /// Picks the transport. Without --bridge we drive the local radio over mDNS, which

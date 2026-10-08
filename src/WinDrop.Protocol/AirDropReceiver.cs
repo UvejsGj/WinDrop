@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using WinDrop.Protocol.Archive;
 using WinDrop.Protocol.Compression;
 using WinDrop.Protocol.Discovery;
@@ -444,22 +443,11 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
         return await ExtractAsync(unpacked, consented, ct);
     }
 
-    /// <summary>A member unpacked but not yet moved into place. Directories have no staged file.</summary>
-    private sealed record StagedMember(string Name, string Destination, string? StagedPath, long Size);
-
     /// <summary>
     /// Unpacks a decompressed cpio archive into the download directory, streaming each
-    /// member to disk as it is read.
-    ///
-    /// ALL OR NOTHING. Members are written into a hidden staging directory inside the
-    /// download directory, and moved into place only once the archive has ended cleanly:
-    /// its trailer read, and the stream after it read to its end. Until then nothing is
-    /// visible, and any failure removes everything this upload wrote. The in-memory version
-    /// had that property for free, since nothing reached disk until the whole upload had
-    /// decompressed. Streaming straight to the destination would trade it away, and over
-    /// AWDL a transfer dying part-way is the common case: a share of three photos would
-    /// leave one and a half behind. Staging inside the download directory keeps the final
-    /// move a rename on one volume.
+    /// member to disk as it is read, and all or nothing: see <see cref="IncomingFiles"/>.
+    /// The archive counts as ended cleanly only once its trailer has been read and the
+    /// stream after it read to its end.
     ///
     /// Because unpacking streams, "member" lines are logged as each header arrives, before
     /// its content. They say what the archive holds, not what has been saved; only "upload
@@ -473,177 +461,75 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
         Directory.CreateDirectory(options.DownloadDirectory);
 
         var reader = new CpioReader(archive);
-        var staged = new List<StagedMember>();
-        var committed = new List<string>();
-        string staging = Path.Combine(options.DownloadDirectory, $".windrop-incoming-{Guid.NewGuid():N}");
+        using var incoming = new IncomingFiles(options.DownloadDirectory, options.Log);
         long declared = 0;
-        bool complete = false;
 
-        try
+        while (await reader.ReadNextAsync(ct) is { } entry)
         {
-            while (await reader.ReadNextAsync(ct) is { } entry)
+            options.Log?.Invoke(entry.IsDirectory
+                ? $"member {PeerText.Printable(entry.Name)} (directory)"
+                : $"member {PeerText.Printable(entry.Name)} ({entry.Size:N0} bytes)");
+
+            // iOS 26.6 opens its upload archive with a directory member named ".": the
+            // root the archive was built from (observed 2026-09-13). That is the download
+            // directory itself, so there is nothing to create. Refusing it, as the first
+            // real upload did, failed every transfer from an iPhone. Only a *directory*
+            // gets this pass. A file claiming to be the root still reaches
+            // ResolveSafePath and is refused there, which is the guard doing its job.
+            if (entry.IsDirectory && IsArchiveRoot(entry.Name)) continue;
+
+            if (incoming.Count >= options.MaxArchiveMembers)
+                throw new AirDropHttpException($"Archive holds more than {options.MaxArchiveMembers:N0} members.");
+
+            // Consent covers the names listed in /Ask. Apple's own archives also carry
+            // members outside that list, the root skipped above among them, so a
+            // mismatch is reported rather than refused. Reported, though: a person
+            // agreeing to these files is the only thing standing behind writing them.
+            // It cannot be raised at the prompt instead: the archive is read only after
+            // the decision, so its members are unknown while the person is deciding.
+            // Matched on the names as sent, before SafeName touches them.
+            if (consented is not null && !IsConsented(consented, entry.Name))
+                options.Log?.Invoke($"member {PeerText.Printable(entry.Name)} was not in the accepted /Ask list");
+
+            // Resolved before any content is read, so a member aimed outside the
+            // download directory is refused without a byte of it touching the disk.
+            string destination = ResolveSafePath(options.DownloadDirectory, entry.Name);
+
+            if (SafeName(entry.Name) != entry.Name)
             {
-                options.Log?.Invoke(entry.IsDirectory
-                    ? $"member {PeerText.Printable(entry.Name)} (directory)"
-                    : $"member {PeerText.Printable(entry.Name)} ({entry.Size:N0} bytes)");
-
-                // iOS 26.6 opens its upload archive with a directory member named ".": the
-                // root the archive was built from (observed 2026-09-13). That is the download
-                // directory itself, so there is nothing to create. Refusing it, as the first
-                // real upload did, failed every transfer from an iPhone. Only a *directory*
-                // gets this pass. A file claiming to be the root still reaches
-                // ResolveSafePath and is refused there, which is the guard doing its job.
-                if (entry.IsDirectory && IsArchiveRoot(entry.Name)) continue;
-
-                if (staged.Count >= options.MaxArchiveMembers)
-                    throw new AirDropHttpException($"Archive holds more than {options.MaxArchiveMembers:N0} members.");
-
-                // Consent covers the names listed in /Ask. Apple's own archives also carry
-                // members outside that list, the root skipped above among them, so a
-                // mismatch is reported rather than refused. Reported, though: a person
-                // agreeing to these files is the only thing standing behind writing them.
-                // It cannot be raised at the prompt instead: the archive is read only after
-                // the decision, so its members are unknown while the person is deciding.
-                // Matched on the names as sent, before SafeName touches them.
-                if (consented is not null && !IsConsented(consented, entry.Name))
-                    options.Log?.Invoke($"member {PeerText.Printable(entry.Name)} was not in the accepted /Ask list");
-
-                // Resolved before any content is read, so a member aimed outside the
-                // download directory is refused without a byte of it touching the disk.
-                string destination = ResolveSafePath(options.DownloadDirectory, entry.Name);
-
-                if (SafeName(entry.Name) != entry.Name)
-                {
-                    options.Log?.Invoke(
-                        $"member {PeerText.Printable(entry.Name)} is named " +
-                        $"{Path.GetRelativePath(options.DownloadDirectory, destination)} on disk; " +
-                        "control or direction characters were replaced");
-                }
-
-                if (entry.IsDirectory)
-                {
-                    staged.Add(new StagedMember(entry.Name, destination, null, 0));
-                    continue;
-                }
-
-                // The size is the peer's claim, but the reader holds the member to it, so
-                // the running total bounds what can be written. Checked before the content,
-                // a header claiming four gigabytes costs nothing but the header.
-                declared += entry.Size;
-
-                if (declared > options.MaxExtractedBytes)
-                {
-                    throw new AirDropHttpException(
-                        $"Archive members declare {declared:N0} bytes, over the {options.MaxExtractedBytes:N0} byte limit.");
-                }
-
-                if (!Directory.Exists(staging)) CreateStagingDirectory(staging);
-
-                string stagedPath = Path.Combine(staging, staged.Count.ToString(CultureInfo.InvariantCulture));
-
-                await using (var file = new FileStream(
-                    stagedPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
-                {
-                    await reader.CopyContentToAsync(file, ct);
-                }
-
-                staged.Add(new StagedMember(entry.Name, destination, stagedPath, entry.Size));
+                options.Log?.Invoke(
+                    $"member {PeerText.Printable(entry.Name)} is named " +
+                    $"{Path.GetRelativePath(options.DownloadDirectory, destination)} on disk; " +
+                    "control or direction characters were replaced");
             }
 
-            // The trailer is not the end of the body. What follows it is read too: an upload
-            // cut off after its trailer is still a failed upload, bytes smuggled after it
-            // still count against the unpacked limit, and DVZip's summary line is written
-            // only when its stream ends.
-            await archive.CopyToAsync(Stream.Null, ct);
-
-            long total = 0;
-
-            foreach (StagedMember member in staged)
+            if (entry.IsDirectory)
             {
-                if (member.StagedPath is null)
-                {
-                    Directory.CreateDirectory(member.Destination);
-                    continue;
-                }
-
-                Directory.CreateDirectory(Path.GetDirectoryName(member.Destination)!);
-                committed.Add(MoveIntoPlace(member));
-                total += member.Size;
-            }
-
-            complete = true;
-            return new AirDropTransferResult(committed, total);
-        }
-        finally
-        {
-            // A commit that failed part-way takes back what it had already placed. Only
-            // files this upload moved in are named here, never one that was there before.
-            if (!complete)
-            {
-                foreach (string path in committed)
-                    TryDelete(() => File.Delete(path), path);
-            }
-
-            if (Directory.Exists(staging))
-                TryDelete(() => Directory.Delete(staging, recursive: true), staging);
-        }
-    }
-
-    /// <summary>
-    /// Moves a staged member to its destination, or beside it under the first free name.
-    ///
-    /// Two members can name the same file: iOS names every edited photo
-    /// FullSizeRender.heic. Overwriting would hand over one file where the user accepted
-    /// three, and say nothing about it. The move itself never overwrites either, so a name
-    /// taken between the check and the move, by another transfer finishing at the same
-    /// moment, fails the move and the next free name is tried.
-    /// </summary>
-    private string MoveIntoPlace(StagedMember member)
-    {
-        for (int attempt = 0; ; attempt++)
-        {
-            string free = Unused(member.Destination);
-
-            try
-            {
-                File.Move(member.StagedPath!, free, overwrite: false);
-            }
-            catch (IOException) when (attempt < 16 && File.Exists(free))
-            {
+                incoming.AddDirectory(entry.Name, destination);
                 continue;
             }
 
-            if (free != member.Destination)
+            // The size is the peer's claim, but the reader holds the member to it, so
+            // the running total bounds what can be written. Checked before the content,
+            // a header claiming four gigabytes costs nothing but the header.
+            declared += entry.Size;
+
+            if (declared > options.MaxExtractedBytes)
             {
-                options.Log?.Invoke(
-                    $"member {PeerText.Printable(member.Name)} saved as {PeerText.Printable(Path.GetFileName(free))}; that name was taken");
+                throw new AirDropHttpException(
+                    $"Archive members declare {declared:N0} bytes, over the {options.MaxExtractedBytes:N0} byte limit.");
             }
 
-            return free;
+            await incoming.AddFileAsync(entry.Name, destination, file => reader.CopyContentToAsync(file, ct));
         }
-    }
 
-    private static void CreateStagingDirectory(string path)
-    {
-        DirectoryInfo directory = Directory.CreateDirectory(path);
+        // The trailer is not the end of the body. What follows it is read too: an upload
+        // cut off after its trailer is still a failed upload, bytes smuggled after it
+        // still count against the unpacked limit, and DVZip's summary line is written
+        // only when its stream ends.
+        await archive.CopyToAsync(Stream.Null, ct);
 
-        // The leading dot hides it on Linux; Windows needs the attribute. It is not a place
-        // a person should come across half a photo.
-        if (OperatingSystem.IsWindows())
-            directory.Attributes |= FileAttributes.Hidden;
-    }
-
-    /// <summary>Cleanup that must not replace the exception already on its way out.</summary>
-    private void TryDelete(Action delete, string path)
-    {
-        try
-        {
-            delete();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            options.Log?.Invoke($"could not remove {PeerText.Printable(path)}: {PeerText.Printable(ex.Message)}");
-        }
+        return incoming.Commit();
     }
 
     /// <summary>
@@ -675,27 +561,6 @@ public sealed class AirDropReceiver(AirDropReceiverOptions options)
         return request.Files.Any(file =>
             string.Equals(file.FileBomPath, normalised, StringComparison.Ordinal)
             || string.Equals(file.FileName, Path.GetFileName(normalised), StringComparison.Ordinal));
-    }
-
-    /// <summary>
-    /// The given path, or the first free "name (n).ext" beside it, so a second member of
-    /// the same name cannot replace the first.
-    /// </summary>
-    private static string Unused(string path)
-    {
-        if (!File.Exists(path)) return path;
-
-        string directory = Path.GetDirectoryName(path)!;
-        string name = Path.GetFileNameWithoutExtension(path);
-        string extension = Path.GetExtension(path);
-
-        for (int n = 2; n < 10_000; n++)
-        {
-            string candidate = Path.Combine(directory, $"{name} ({n}){extension}");
-            if (!File.Exists(candidate)) return candidate;
-        }
-
-        throw new AirDropHttpException($"Too many members named like '{Path.GetFileName(path)}'.");
     }
 
     /// <summary>

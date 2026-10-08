@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>WinDrop</title>
+<link rel="stylesheet" href="page.css">
+<script src="page.js" defer></script>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">WinDrop</p>
+    <h1 id="pc-name">This PC</h1>
+    <p class="lede">Send files both ways over this Wi-Fi. No app needed.</p>
+  </header>
+
+  <section class="card" aria-labelledby="send-title">
+    <h2 id="send-title">Send to <span class="pc">this PC</span></h2>
+    <label class="button primary" for="picker">Choose photos or files</label>
+    <input id="picker" class="visually-hidden" type="file" multiple>
+    <ul id="chosen" class="files"></ul>
+    <button id="send-button" class="button primary" type="button" hidden>Send</button>
+    <div id="progress" class="progress" hidden><div id="bar" class="bar"></div></div>
+    <p id="send-status" class="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section id="receive" class="card" aria-labelledby="receive-title" hidden>
+    <h2 id="receive-title">From <span class="pc">this PC</span></h2>
+    <ul id="offered" class="files"></ul>
+    <p class="note">Downloads go to the Files app. To put a photo in Photos, open it there and tap Share, then Save Image.</p>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Add WinDrop to the share sheet</summary>
+      <p>Make a Shortcut once, and <b>Send to WinDrop</b> appears when you tap Share in Photos or Files.</p>
+      <ol>
+        <li>
+          Copy this link:
+          <span class="copy-row">
+            <input id="shortcut-url" type="text" readonly aria-label="Upload link for the Shortcut">
+            <button id="copy" class="button small" type="button">Copy</button>
+          </span>
+        </li>
+        <li>Open the Shortcuts app, tap <b>+</b>, and name the new shortcut <b>Send to WinDrop</b>.</li>
+        <li>Open the shortcut's details and turn on <b>Show in Share Sheet</b>, accepting images, media and files.</li>
+        <li>Add the action <b>Get Contents of URL</b> and paste the link as its URL. Show its options and set Method to <b>POST</b> and Request Body to <b>Form</b>.</li>
+        <li>Add a field of type <b>File</b>, with the key <b>file</b> and the value <b>Shortcut Input</b>.</li>
+        <li>In Photos, tap Share, then <b>Send to WinDrop</b>, and accept on the PC.</li>
+      </ol>
+      <p class="note">It works while WinDrop is open on the PC and both are on the same Wi-Fi. If the PC's address changes, scan its code again and update the link.</p>
+    </details>
+  </section>
+
+  <footer>
+    <p>Files go straight to the PC over your Wi-Fi, and the PC asks before saving anything. Use this on a network you trust: the connection is not encrypted beyond the Wi-Fi itself.</p>
+  </footer>
+</main>
+</body>
+</html>

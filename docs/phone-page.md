@@ -1,0 +1,180 @@
+# The phone page
+
+A route from an iPhone to Windows, and back, that needs no AWDL, no Linux and no extra
+hardware. WinDrop serves a small web page on the local network. The iPhone's camera
+scans a QR code on the PC, Safari opens the page, and files go both ways at ordinary
+Wi-Fi speed.
+
+**It is not AirDrop.** The PC does not appear in the iPhone's AirDrop list, and nothing
+here changes what [ADR-001](adr-001-transport-selection.md) found: an iPhone only does
+AirDrop over AWDL, which Windows cannot drive. This is the honest alternative for the
+person who has a Windows PC and an iPhone today. The AirDrop work over Linux and OWL
+carries on alongside it.
+
+## Using it
+
+**In the app:** the phone button in the header opens a sheet with the code. Files chosen
+in the app are offered on the page while that sheet is open. Uploads from the phone go
+through the same consent sheet as AirDrop.
+
+**From the CLI:**
+
+```
+windrop link [--dir <path>] [--port <n>] [--yes] [--offer <file>]...
+```
+
+It prints the code in the terminal and serves until Ctrl+C.
+
+**The share sheet:** the page explains how to make an iOS Shortcut, *Send to WinDrop*,
+that appears when you tap Share in Photos or Files. The Shortcut posts the shared files
+to the page's upload address as a form.
+
+### If the phone cannot open the page
+
+- **Same network.** The phone and the PC must be on the same Wi-Fi, or the PC wired to
+  the same router. Guest networks often isolate devices from each other.
+- **Windows Firewall.** The first time WinDrop (or `dotnet`, for the CLI) listens,
+  Windows asks whether to allow it. It needs to be allowed on private networks. If the
+  Wi-Fi is set as a *public* network in Windows, incoming connections are blocked; the
+  network's profile is under Settings > Network & internet > Wi-Fi.
+- **The address.** The code uses the PC's IPv4 address on the interface with a default
+  gateway, Wi-Fi first. The CLI also prints the other addresses it found.
+
+## How it works
+
+Three requests matter, all under `/<token>/`:
+
+| Request | What it does |
+|---|---|
+| `GET /<token>/` | the page, its script and stylesheet, all embedded in the build |
+| `POST /<token>/upload` | a `multipart/form-data` upload: fields first, then files |
+| `GET /<token>/files/<generation>/<index>` | an offered file, as an attachment |
+
+`GET /<token>/info` returns the PC's name and the offered files, which the page polls
+while it is open. HTTP is our own [`HttpConnection`](../src/WinDrop.Protocol/Http/HttpConnection.cs),
+the same one AirDrop uses, over plain TCP.
+
+### The upload
+
+The page sends three kinds of form field, in this order:
+
+1. `from`: a guess at the device ("iPhone", from the browser's user agent). Display only.
+2. `manifest`: a JSON list of `{name, size}` for every file it is about to send.
+3. `file`, once per file.
+
+The server reads the fields, then the first file's headers, and **asks before reading any
+file content**. Until the person answers, the upload waits in the socket and TCP holds the
+phone back. This is the same rule as AirDrop's early-ask, for the same reason: reading
+first would let anyone with the link make the PC take in a file of any size before anyone
+agreed to it. A test sends the head and the list of a 10 MB upload and nothing more, and
+checks that the question arrives anyway.
+
+**The list is binding.** What the person agreed to is what lands on disk. Each file is
+saved under the name the list gave it, and may be no larger than the list said. The count
+must match. A page cannot show "photo.jpg" at the prompt and deliver "photo.exe". Any
+mismatch fails the whole upload, and nothing is kept.
+
+**A Shortcut sends no list.** Then only the first file's name is known when the question
+is asked, so the prompt says that more files may follow, and gives the request's
+Content-Length as the honest bound on the total.
+
+Files are staged and committed all or nothing by [`IncomingFiles`](../src/WinDrop.Protocol/IncomingFiles.cs),
+the same class the AirDrop receiver uses. A failed or refused upload leaves nothing
+behind.
+
+### Names
+
+A form sends a bare file name, but nothing stops a client from sending a path, so
+[`PhonePageServer.Destination`](../src/WinDrop.Protocol/Web/PhonePage.cs) keeps only the
+last segment and makes it safe for Windows:
+
+- control and direction-override characters become `_`, as for AirDrop (`PeerText`)
+- `< > : " | ? *` become `_`. A colon would otherwise name an NTFS alternate data stream:
+  `a:b.txt` would write a hidden stream called `b.txt` on a file called `a`
+- trailing dots and spaces are trimmed, since Windows strips them anyway
+- device names (`CON`, `NUL`, `COM1` and the rest) get a leading `_`
+- then the same containment check as an AirDrop archive member
+
+Duplicate names get " (2)" and so on, never an overwrite.
+
+### Downloads
+
+Files are offered only while the app's phone sheet is open, or for the CLI's lifetime
+with `--offer`. Choosing files in the app is not by itself a decision to let a phone
+fetch them, but opening the sheet with them chosen is. Each offer has a generation
+number, so a link to an earlier offer stops working the moment the offer changes.
+
+Responses carry `Content-Disposition: attachment` with an ASCII fallback name and the real
+name in RFC 8187 form, and declare their length so Safari can show progress. Downloads go
+to the iPhone's Files app.
+
+## Security model
+
+**Two locks.**
+
+1. **The token.** 128 random bits in the address. Every request must carry it as the first
+   path segment, compared in constant time, or it gets the same 404 as a page that does
+   not exist. Without it, nobody else on the network can reach the page, the prompt or the
+   offered files.
+2. **The prompt.** Anyone who has the link can *ask* to send files, but nothing is written
+   until the person at the PC agrees.
+
+The app keeps its token across restarts, because a Shortcut has the address written into
+it. **New link** replaces it, which is how you take the address back from a phone you no
+longer want sending. The CLI makes a new one every run, since its output may end up pasted
+in a report.
+
+**Plain HTTP, on purpose.** Safari would show a full-page warning for a self-signed
+certificate, and a Shortcut refuses one outright, so HTTPS would mean teaching people to
+click through certificate warnings. Instead:
+
+- **Protected:** the traffic, by the Wi-Fi's own encryption, from anyone outside the
+  network. The page and its files, by the token, from anyone on the network who does not
+  have the link.
+- **Not protected:** the traffic from someone already on the same network who can
+  intercept it. They could read files in transit, and the token with them.
+
+That is why the page and this document say it is for home and other trusted networks.
+
+**Other limits:**
+
+- A Content-Security-Policy allowing only the page's own script and style. Everything the
+  PC sends into the page is set with `textContent`, never parsed as HTML.
+- Referrer-Policy `no-referrer` and Cache-Control `no-store`, since the token is in the
+  address.
+- A request that frames its body two ways (Content-Length and Transfer-Encoding) is
+  refused, and so is a Transfer-Encoding other than plain chunked.
+- At most 16 connections at once; more are closed at once rather than queued.
+- A connection with nothing moving for 60 seconds is closed.
+- Form header lines are limited to 8 KB, 16 headers per part, 64 KB per text field, 1,000
+  files per upload and 8 GiB per request.
+- The logs never print the token.
+
+## What is verified, and what is not
+
+**Verified on this machine:**
+
+- The page, its script and its security headers in a Chromium-based browser at phone size.
+- The page's own upload path end to end: the list, the files, and the auto-accepted
+  save.
+- curl against every route.
+- The unit and socket tests in `PhonePageTests`, `MultipartReaderTests` and `QrCodeTests`.
+
+The QR encoder is checked against values published with the standard: Reed-Solomon
+codewords, format and version bits, capacities and alignment positions. A test reader,
+written from the standard's description of the layout rather than from the encoder's code,
+reads codes back under all eight masks and across versions 1 to 10. Breaking the encoder
+on purpose (a mask's axes swapped, the zigzag reversed, the block interleaving changed, a
+format copy misplaced) fails those tests, and so do the server's equivalents: consent
+ignored, the token unchecked, a listed size not enforced, a colon left in a name.
+
+**Not yet verified, all waiting on a real iPhone:**
+
+- that the iPhone camera reads the code (the one check no test here can stand in for)
+- Safari's upload of photos: whether it sends HEIC or converts to JPEG, and under which
+  names
+- how long Safari and Shortcuts wait while the PC's prompt is open (probably about 60
+  seconds of no progress)
+- the Shortcut steps as written, on the current iOS
+- whether `<pc-name>.local` would work in place of the IP address, which would survive
+  the PC getting a new address

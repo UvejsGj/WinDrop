@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using System.Windows;
 using System.Windows.Controls;
@@ -11,6 +12,7 @@ using WinDrop.App.Glass;
 using WinDrop.Protocol;
 using WinDrop.Protocol.Discovery;
 using WinDrop.Protocol.Tls;
+using WinDrop.Protocol.Web;
 
 namespace WinDrop.App;
 
@@ -50,6 +52,13 @@ public partial class MainWindow : Window
     private double _dpiScale = 1;
 
     private CancellationTokenSource? _toastTimer;
+
+    // The phone page. Restarted, with a new secret, by "New link".
+    private PhonePageServer? _phone;
+    private CancellationTokenSource? _phoneStop;
+    private Task _phoneRun = Task.CompletedTask;
+    private string _phoneToken = "";
+    private int _phonePort;
 
     public MainWindow()
     {
@@ -120,6 +129,16 @@ public partial class MainWindow : Window
         {
             DiscoverabilityText.Text = "Not discoverable";
             SetStatus($"Could not start: {ex.Message}");
+        }
+
+        // Started on its own: AirDrop failing to start is no reason for the phone page not to.
+        try
+        {
+            StartPhonePage(PhoneLinkStore.LoadOrCreate());
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Phone page could not start: {ex.Message}");
         }
     }
 
@@ -273,7 +292,50 @@ public partial class MainWindow : Window
     /// of the whole protocol — TLS authenticates nobody — so it blocks the transfer until
     /// a person actually answers, rather than defaulting either way on a timeout.
     /// </summary>
-    private async Task<bool> AskUserAsync(AirDropAskRequest request, CancellationToken ct)
+    private Task<bool> AskUserAsync(AirDropAskRequest request, CancellationToken ct)
+    {
+        // Every name here is the sender's choice. WPF acts on no escape sequences, but it
+        // does honour direction overrides, which would let "photo", U+202E, "gpj.exe" sit on
+        // this sheet reading as "photoexe.jpg".
+        string names = string.Join(", ", request.Files.Select(f => PeerText.Printable(f.FileName)));
+
+        string detail = request.Files.Count == 1
+            ? $"wants to share “{names}”"
+            : $"wants to share {request.Files.Count} items · {names}";
+
+        return AskAsync(PeerText.Printable(request.SenderComputerName), detail, () => PreviewForAskAsync(request), ct);
+    }
+
+    /// <summary>
+    /// The phone page's uploads, on the same sheet. Asked before any file in the upload is
+    /// read, and every name on it came from the phone, so it is cleaned the same way. A
+    /// Shortcut does not list its files in advance, and then the sheet says more may follow.
+    /// </summary>
+    private Task<bool> AskUserAsync(PhoneUploadRequest request, CancellationToken ct)
+    {
+        string sender = request.Sender.Length > 0 ? PeerText.Printable(request.Sender) : "A phone";
+
+        string names = string.Join(", ", request.Files.Take(3).Select(f => PeerText.Printable(f.Name)));
+        if (request.Files.Count > 3) names += $" and {request.Files.Count - 3} more";
+
+        string size = request.TotalBytes is { } total ? $" · {FormatSize(total)}" : "";
+
+        string detail = request.MoreMayFollow
+            ? $"wants to share “{names}” and possibly more{size}"
+            : request.Files.Count == 1
+                ? $"wants to share “{names}”{size}"
+                : $"wants to share {request.Files.Count} items · {names}{size}";
+
+        detail += $"\nfrom the phone page, at {request.RemoteAddress}";
+
+        string? first = request.Files.FirstOrDefault()?.Name;
+
+        return AskAsync(sender, detail, async () => first is null
+            ? null
+            : await WithinAsync(ShellPreview.ForTypeAsync(first, false), seconds: 3), ct);
+    }
+
+    private async Task<bool> AskAsync(string title, string detail, Func<Task<FilePreview?>> previewFor, CancellationToken ct)
     {
         await _consentGate.WaitAsync(ct);
 
@@ -284,21 +346,14 @@ public partial class MainWindow : Window
             // Ready before the sheet opens, so the prompt appears whole instead of an image
             // popping in once the user has started reading. Every step is time-boxed, so a
             // slow or hostile preview can hold the prompt back by seconds, not indefinitely.
-            FilePreview? preview = await PreviewForAskAsync(request);
+            FilePreview? preview = await previewFor();
 
             await Dispatcher.InvokeAsync(() =>
             {
                 _pendingConsent = completion;
 
-                // Every name here is the sender's choice. WPF acts on no escape sequences, but
-                // it does honour direction overrides, which would let "photo", U+202E,
-                // "gpj.exe" sit on this sheet reading as "photoexe.jpg".
-                string names = string.Join(", ", request.Files.Select(f => PeerText.Printable(f.FileName)));
-
-                ConsentTitle.Text = PeerText.Printable(request.SenderComputerName);
-                ConsentDetail.Text = request.Files.Count == 1
-                    ? $"wants to share “{names}”"
-                    : $"wants to share {request.Files.Count} items · {names}";
+                ConsentTitle.Text = title;
+                ConsentDetail.Text = detail;
 
                 ConsentPreview.ItemsSource = preview is null ? null : PreviewItem.Stack([preview], ConsentPreviewBox);
                 ConsentPreview.Visibility = preview is null ? Visibility.Collapsed : Visibility.Visible;
@@ -378,6 +433,122 @@ public partial class MainWindow : Window
 
         ConsentSlide.BeginAnimation(TranslateTransform.YProperty, slide);
         ConsentScrim.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(320)));
+    }
+
+    // ---- the phone page ----------------------------------------------------
+
+    private void StartPhonePage(string token)
+    {
+        _phoneToken = token;
+
+        _phone = new PhonePageServer(new PhonePageOptions
+        {
+            DownloadDirectory = _downloadDirectory,
+            Token = token,
+            ComputerName = Environment.MachineName,
+            ConsentHandler = AskUserAsync,
+            Saved = (_, result) => Dispatcher.InvokeAsync(() =>
+                SetStatus($"Saved {result.Files.Count} item(s) from the phone to Downloads › WinDrop")),
+        });
+
+        _phonePort = _phone.Listen(PhonePageServer.DefaultPort);
+        _phoneStop = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+        _phoneRun = _phone.RunAsync(_phoneStop.Token);
+    }
+
+    private void OnShowPhone(object sender, RoutedEventArgs e)
+    {
+        if (_phone is null)
+        {
+            SetStatus("The phone page is not running");
+            return;
+        }
+
+        RefreshPhoneSheet();
+
+        PhoneSheet.Visibility = Visibility.Visible;
+        PhoneScrim.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(260)));
+        PhoneSlide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(560, 0, TimeSpan.FromMilliseconds(560))
+        {
+            EasingFunction = new BackEase { Amplitude = 0.22, EasingMode = EasingMode.EaseOut },
+        });
+    }
+
+    /// <summary>
+    /// Draws the code for the current address and offers the current selection. Files are
+    /// offered only while the sheet is open: choosing files is not by itself a decision to
+    /// let a phone fetch them, and opening this sheet with them chosen is.
+    /// </summary>
+    private void RefreshPhoneSheet()
+    {
+        if (_phone is null) return;
+
+        // Looked up each time: the PC may have changed networks since the app started.
+        IReadOnlyList<IPAddress> addresses = PhonePageAddresses.Find();
+
+        if (addresses.Count == 0)
+        {
+            PhoneCode.Source = null;
+            PhoneUrl.Text = "";
+            PhoneOffer.Text = "This PC is not on a network a phone could reach. Join Wi-Fi and try again.";
+            _phone.WithdrawOffer();
+            return;
+        }
+
+        string url = PhonePageServer.PageUrl(addresses[0].ToString(), _phonePort, _phoneToken);
+        PhoneCode.Source = QrImage.Create(QrCode.Encode(url));
+        PhoneUrl.Text = url;
+
+        IReadOnlyList<PhoneOfferedFile> offered = _phone.OfferFiles(_files);
+
+        PhoneOffer.Text = offered.Count switch
+        {
+            0 when _files.Count > 0 => "Folders cannot be offered on the page yet.",
+            0 => "Choose files here first to offer them on the page too.",
+            1 => $"“{offered[0].Name}” is on the page while this is open.",
+            _ => $"Your {offered.Count} chosen files are on the page while this is open.",
+        };
+    }
+
+    private void OnHidePhone(object sender, RoutedEventArgs e)
+    {
+        _phone?.WithdrawOffer();
+
+        var slide = new DoubleAnimation(600, TimeSpan.FromMilliseconds(320))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+        };
+
+        slide.Completed += (_, _) => PhoneSheet.Visibility = Visibility.Collapsed;
+
+        PhoneSlide.BeginAnimation(TranslateTransform.YProperty, slide);
+        PhoneScrim.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(320)));
+    }
+
+    private async void OnRenewPhoneLink(object sender, RoutedEventArgs e)
+    {
+        _phoneStop?.Cancel();
+
+        try
+        {
+            await _phoneRun;
+        }
+        catch (Exception)
+        {
+            // It was stopping anyway.
+        }
+
+        try
+        {
+            StartPhonePage(PhoneLinkStore.Renew());
+            RefreshPhoneSheet();
+            SetStatus("New link. The old one, and any Shortcut using it, no longer works");
+        }
+        catch (Exception ex)
+        {
+            _phone = null;
+            SetStatus($"Phone page could not restart: {ex.Message}");
+        }
     }
 
     // ---- sending -----------------------------------------------------------
@@ -526,6 +697,8 @@ public partial class MainWindow : Window
             peer.Progress = 0;
             peer.Status = "";
         }
+
+        if (PhoneSheet.Visibility == Visibility.Visible) RefreshPhoneSheet();
 
         if (_files.Count == 0)
         {

@@ -6,5 +6,11 @@
   <ItemGroup>
     <InternalsVisibleTo Include="WinDrop.Protocol.Tests" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The phone page, served by Web/PhonePage.cs. Embedded so the CLI and the app carry it whole. -->
+    <EmbeddedResource Include="Web\page.html" LogicalName="WinDrop.Protocol.Web.page.html" />
+    <EmbeddedResource Include="Web\page.css" LogicalName="WinDrop.Protocol.Web.page.css" />
+    <EmbeddedResource Include="Web\page.js" LogicalName="WinDrop.Protocol.Web.page.js" />
+  </ItemGroup>
 
 </Project>

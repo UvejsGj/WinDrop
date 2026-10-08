@@ -3,6 +3,10 @@
 An AirDrop implementation for Windows, built from scratch by reverse-engineering the
 protocol. Learning project: understanding over shortcuts, no wrapping of existing tools.
 
+For an iPhone and a Windows PC today, there is also the [phone page](docs/phone-page.md):
+the iPhone scans a code on the PC and sends files both ways in Safari, over ordinary
+Wi-Fi. It is not AirDrop, but it needs no extra hardware and no Linux.
+
 ## Status
 
 | Milestone | State |
@@ -13,9 +17,10 @@ protocol. Learning project: understanding over shortcuts, no wrapping of existin
 | 3. Self-signed TLS + minimal HTTP/1.1 | **done** |
 | 4. Discover → Ask → Upload state machine | **done** — verified against opendrop, an independent implementation |
 | 5. DVZip compression + CPIO `newc` archive | **done** — CPIO checked against bsdtar/libarchive |
-| 6. Reaching an iPhone | **working, slowly and intermittently** — real iPhones on iOS 26.6, 27.0 and 27.0.1 have AirDropped files to WinDrop, arriving intact. Over Linux + OWL, at 12–27 KB/s and roughly one transfer in three in recent sessions, on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
+| 6. Reaching an iPhone over AirDrop | **working, slowly and intermittently** — real iPhones on iOS 26.6, 27.0 and 27.0.1 have AirDropped files to WinDrop, arriving intact. Over Linux + OWL, at 12–27 KB/s and roughly one transfer in three in recent sessions, on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
+| 7. The phone page: iPhone ↔ Windows over ordinary Wi-Fi, not AirDrop | **built and tested on this PC**, in the app and the CLI. Waiting on the first scan from a real iPhone. See [phone-page.md](docs/phone-page.md) |
 
-279 tests, all passing.
+386 tests, all passing.
 
 ## The one thing to understand first
 
@@ -49,7 +54,7 @@ whose upload mixed compressed and stored DVZip blocks. The log of every session 
 | WinDrop → iPhone | **untested**. The sender is proven only against opendrop |
 | Speed | **12–27 KB/s** in recent sessions on the one card tested (Intel AX211), 15–40 KB/s earlier. A 200 KB photo takes ~15 s, a 2.5 MB one ~100 s. Largest to arrive: 3.6 MB as one file, 6.4 MB as a four-photo share (267 s). ~25 MB fails |
 | Phone setting | **Everyone for 10 Minutes** only. Contacts Only requires an Apple-issued identity, which a non-Apple device cannot hold |
-| Windows alone | **cannot reach an iPhone** (see above). The radio has to be Linux: booted directly, or later a bridge |
+| Windows alone | **cannot AirDrop with an iPhone** (see above). The radio has to be Linux: booted directly, or later a bridge. The [phone page](docs/phone-page.md) reaches an iPhone from Windows alone, as a web page rather than as AirDrop |
 
 **The speed is the radio, not the protocol, and that is measured.** The AX211 can only
 run plain monitor mode, not *active* monitor mode, so it never acknowledges the frames the
@@ -71,6 +76,7 @@ dotnet run --project src/WinDrop.App              # the GUI
 dotnet run --project src/WinDrop.Cli -- receive
 dotnet run --project src/WinDrop.Cli -- send path\to\file.jpg
 dotnet run --project src/WinDrop.Cli -- browse
+dotnet run --project src/WinDrop.Cli -- link       # the phone page
 ```
 
 `receive` takes `--dir <path>`, `--yes` (skip the consent prompt — it is the only real
@@ -85,6 +91,14 @@ any of it. `--no-early-ask` restores the classic order.
 
 **Who this reaches from Windows:** another WinDrop instance, opendrop, or a Mac started
 with `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
+
+**The phone page** reaches any phone on the same Wi-Fi, an iPhone included. In the app,
+the phone button in the header shows a QR code; `link` prints one in the terminal. The
+phone opens the page in its browser to send files to the PC, which asks before saving
+anything, and to download files the PC offers. The page also explains how to add a *Send
+to WinDrop* Shortcut to the iPhone's share sheet. It uses plain HTTP with a secret token in
+the address, so it is meant for trusted networks; [phone-page.md](docs/phone-page.md) has
+the reasoning, the security model and what is still untested.
 
 **Reaching an iPhone** means running the receiver on Linux alongside OWL, which is how
 every iPhone transfer so far was made. On Linux, `awdl0` is an ordinary interface, so the
@@ -201,7 +215,9 @@ src/WinDrop.Protocol/
   Compression/    DVZip chunked zlib, gzip fallback
   Dns/            DNS wire format for mDNS
   Discovery/      ITransport seam, mDNS, the infra-Wi-Fi and bridge transports
+  Web/            the phone page: its server, form parser, QR encoder and the page itself
   AirDrop*.cs     the Discover/Ask/Upload state machine, both halves
+  IncomingFiles.cs  staging, so a transfer lands all or nothing
   PeerText.cs     peer text made safe to show, and the rules for safe saved names
   PreviewImage.cs which preview bytes may reach an image decoder
 src/WinDrop.App/                    WPF desktop app, AirDrop-styled
@@ -228,6 +244,10 @@ wrong in a way that round-trips through itself perfectly:
 - **mDNS** — python-zeroconf discovers and fully resolves our service: PTR, SRV, TXT and
   both address families (`tools/mdns_browse.py`).
 - **The Continuity beacon** — captured from a real iPhone, not taken from a write-up.
+- **The QR encoder** — checked against values published with the standard (Reed-Solomon
+  codewords, format and version bits, capacities, alignment positions), then read back by a
+  test reader written from the standard's description of the layout, not the encoder's
+  code. The real check, an iPhone camera, is still to come.
 - **The full stack, both directions** — real transfers to and from **opendrop**, an
   independent implementation of the same protocol, byte-identical each way. Sending
   exercises our writers; receiving exercises our readers, and found two real bugs.

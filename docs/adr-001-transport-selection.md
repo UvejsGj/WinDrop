@@ -235,3 +235,32 @@ ergonomic tax on iterative testing that we should design the test harness around
 AirDrop peer at all. OpenDrop is lightly maintained and recent iOS has hardened AirDrop.
 Milestone 0 should be an interop smoke test against the actual target iPhone before we
 build six layers on top of an assumption.
+
+
+## Addendum, 2026-10-08: a route to the iPhone that is not AirDrop
+
+Nothing above has changed. An iPhone AirDrops only over AWDL, Windows cannot drive AWDL,
+and on this machine's card the Windows driver confirms it: network monitor mode and
+promiscuous mode are both "Not supported" in `netsh wlan show wirelesscapabilities`. The
+AirDrop route stays Linux and OWL, and the field sessions continue.
+
+What changed is the question being asked. For someone with a Windows PC and an iPhone
+today, the useful thing is files moving between them, not that the PC appears in the
+AirDrop list. So WinDrop now also serves a [phone page](phone-page.md): the iPhone scans a
+QR code on the PC and uses Safari to send and receive files over ordinary Wi-Fi, at
+ordinary Wi-Fi speed, with the same consent rule as AirDrop. An optional iOS Shortcut puts
+*Send to WinDrop* in the share sheet. It needs no extra hardware, no Linux, no driver and
+nothing from Apple.
+
+Two developments since this ADR, recorded here because they decide whether real AirDrop
+on Windows ever becomes possible. Neither has yet.
+
+- **Wi-Fi Aware.** Under the EU's Digital Markets Act, iOS 26 added Wi-Fi Aware, the open
+  standard for direct device-to-device Wi-Fi, for third-party apps, worldwide. AirDrop
+  itself still appears to use AWDL, and Windows offers no Wi-Fi Aware interface to drivers
+  or apps. If AirDrop starts accepting Wi-Fi Aware, and Windows and Intel's driver add it,
+  that becomes the route, through standard drivers.
+- **Android.** Since November 2025, Google's Quick Share on Pixel phones exchanges files
+  with AirDrop, built without Apple. It shows a non-Apple device can do it when the radio
+  and its driver support it. On Windows that support would have to come from Intel or
+  Microsoft.
