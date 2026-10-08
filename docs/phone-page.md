@@ -152,6 +152,17 @@ That is why the page and this document say it is for home and other trusted netw
 
 ## What is verified, and what is not
 
+**Verified with a real iPhone** (2026-10-08, iOS 27.0.1, the app on Windows, home Wi-Fi):
+
+- The iPhone's camera read the QR code from the app's sheet, and Safari opened the page.
+- One photo, sent from the page and accepted at the PC's prompt, arrived intact: 1.6 MB,
+  saved as `IMG_xxxx.jpeg`.
+- **Safari converts to JPEG.** The camera shoots HEIC, and the file that arrived is a JPEG
+  (it starts `FF D8`, JFIF) with a lowercase `.jpeg` name. Safari converts photos picked
+  through a web page's file input, which is what most people want on Windows. The other
+  side is that the HEIC original, and whatever metadata the conversion drops, does not
+  arrive. The Shortcut may behave differently; that is untested.
+
 **Verified on this machine:**
 
 - The page, its script and its security headers in a Chromium-based browser at phone size.
@@ -168,13 +179,13 @@ on purpose (a mask's axes swapped, the zigzag reversed, the block interleaving c
 format copy misplaced) fails those tests, and so do the server's equivalents: consent
 ignored, the token unchecked, a listed size not enforced, a colon left in a name.
 
-**Not yet verified, all waiting on a real iPhone:**
+**Not yet verified with a real iPhone:**
 
-- that the iPhone camera reads the code (the one check no test here can stand in for)
-- Safari's upload of photos: whether it sends HEIC or converts to JPEG, and under which
-  names
+- downloads from the PC to the phone
+- several photos in one send, and videos
 - how long Safari and Shortcuts wait while the PC's prompt is open (probably about 60
   seconds of no progress)
+- a declined upload, as the phone shows it
 - the Shortcut steps as written, on the current iOS
 - whether `<pc-name>.local` would work in place of the IP address, which would survive
   the PC getting a new address
