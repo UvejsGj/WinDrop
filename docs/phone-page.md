@@ -157,6 +157,13 @@ That is why the page and this document say it is for home and other trusted netw
 - The iPhone's camera read the QR code from the app's sheet, and Safari opened the page.
 - One photo, sent from the page and accepted at the PC's prompt, arrived intact: 1.6 MB,
   saved as `IMG_xxxx.jpeg`.
+- Five photos in one send, about 3.6 MB together and 0.1 to 2.5 MB each, all arrived as
+  valid JPEGs.
+- A send declined at the PC showed "Declined on" and the PC's name on the phone, and left
+  nothing behind: no file and no staging folder. The phone was still uploading when the
+  refusal went out, so this is the linger before closing doing its job. Without it, the
+  close can reset the connection before the refusal is read, and the phone shows only a
+  network error.
 - **Safari converts to JPEG.** The camera shoots HEIC, and the file that arrived is a JPEG
   (it starts `FF D8`, JFIF) with a lowercase `.jpeg` name. Safari converts photos picked
   through a web page's file input, which is what most people want on Windows. The other
@@ -182,10 +189,9 @@ ignored, the token unchecked, a listed size not enforced, a colon left in a name
 **Not yet verified with a real iPhone:**
 
 - downloads from the PC to the phone
-- several photos in one send, and videos
+- videos
 - how long Safari and Shortcuts wait while the PC's prompt is open (probably about 60
   seconds of no progress)
-- a declined upload, as the phone shows it
 - the Shortcut steps as written, on the current iOS
 - whether `<pc-name>.local` would work in place of the IP address, which would survive
   the PC getting a new address
