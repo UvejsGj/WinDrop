@@ -131,6 +131,22 @@ Three things to know:
 If `dotnet` stops with a message about ICU, `export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`
 first.
 
+### From a live USB, in four lines
+
+A live USB keeps nothing between boots, so every session begins by installing OWL and the
+SDK again. `tools/session-setup.sh` does that, builds the receiver into `~/wd` and scans the
+nearby Wi-Fi. `tools/session-receive.sh` starts the receiver, saving to `/tmp/rx`.
+
+```bash
+git clone -b linux https://github.com/UvejsGj/WinDrop.git
+bash WinDrop/tools/session-setup.sh             # while still online
+bash ~/WinDrop/tools/owl-session.sh             # terminal 1
+bash ~/WinDrop/tools/session-receive.sh --yes   # terminal 2; leave out --yes to be asked
+```
+
+The setup script installs OWL with `apt`, which works on Kali. Elsewhere, install OWL first
+and the script skips that step. It can be run again: whatever is already there is skipped.
+
 ### Building and testing
 
 ```bash
@@ -310,7 +326,9 @@ src/WinDrop.Tools.ContinuitySniffer/  milestone 0 BLE capture (Windows only)
 src/WinDrop.Tools.ContactHash/        local contact-hash probe
 WinDrop.Linux.slnf                  the solution without the Windows-only projects
 tools/windrop-bridge.py             the Linux-side AWDL relay daemon
+tools/session-setup.sh              a field session's installs, build and Wi-Fi scan, in one command
 tools/owl-session.sh                brings OWL up for a field session on Kali, and logs it
+tools/session-receive.sh            starts the receiver the way a field session does
 tools/retry-capture.sh              counts the phone's resent frames during a transfer
 tools/plist_oracle.py               plistlib fixtures and differential oracle
 docs/                               ADRs and reverse-engineering notes
