@@ -3,6 +3,21 @@
 An AirDrop implementation for Windows, built from scratch by reverse-engineering the
 protocol. Learning project: understanding over shortcuts, no wrapping of existing tools.
 
+## Branches
+
+The project is kept on three branches. `main` is the base. The other two build on it and
+are not merged back, and each has its own README.
+
+| Branch | What it is |
+|---|---|
+| `main` (this one) | AirDrop for Windows: the protocol library, the desktop app and the command line. Everything above the radio is built and tested; reaching an iPhone from Windows is what remains |
+| [`linux`](https://github.com/UvejsGj/WinDrop/tree/linux) | The same code, worked on as a Linux command-line tool. Linux with OWL is the one setup that reaches an iPhone today, and every iPhone transfer recorded below ran on it. Adds a Linux build and a README that starts from Linux |
+| [`phone-page`](https://github.com/UvejsGj/WinDrop/tree/phone-page) | A separate route between an iPhone and a Windows PC, which is not AirDrop: the phone scans a code on the PC and sends files both ways in Safari, over ordinary Wi-Fi. No extra hardware and no Linux |
+
+To receive from an iPhone today, clone `linux`:
+`git clone -b linux https://github.com/UvejsGj/WinDrop.git`. Changes to the shared protocol
+code belong here on `main`, and the other branches take them from it.
+
 ## Status
 
 | Milestone | State |
@@ -88,7 +103,8 @@ with `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
 
 **Reaching an iPhone** means running the receiver on Linux alongside OWL, which is how
 every iPhone transfer so far was made. On Linux, `awdl0` is an ordinary interface, so the
-CLI works there unchanged. The runbook is [bridge-hardware-setup.md](docs/bridge-hardware-setup.md).
+CLI works there unchanged. The runbook is [bridge-hardware-setup.md](docs/bridge-hardware-setup.md),
+and the [`linux` branch](https://github.com/UvejsGj/WinDrop/tree/linux) is set up for exactly this.
 
 ### Bridge transport
 
