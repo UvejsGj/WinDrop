@@ -235,3 +235,31 @@ ergonomic tax on iterative testing that we should design the test harness around
 AirDrop peer at all. OpenDrop is lightly maintained and recent iOS has hardened AirDrop.
 Milestone 0 should be an interop smoke test against the actual target iPhone before we
 build six layers on top of an assumption.
+
+
+## Addendum, 2026-10-11: a Linux branch beside the Windows project
+
+The findings above stand, and the field sessions have since added two. A current iPhone
+does accept a non-Apple AirDrop peer, which the 2026-09-02 addendum doubted: iOS 26.6, 27.0
+and 27.0.1 have all sent files to WinDrop. And every one of those transfers ran with the
+CLI directly on Linux, over OWL's `awdl0`, with no bridge and no Windows in the path.
+
+So in practice Linux is where WinDrop reaches an iPhone, and Windows is where it cannot
+yet: the bridge needs an adapter that can be handed to WSL2, or a second machine, and
+neither has been available. This ADR's design is unchanged, and `main` remains the Windows
+project it describes. The Linux side now has a branch of its own, and this addendum exists
+only there.
+
+What the branch changes:
+
+- The Linux command line is treated as a way to use WinDrop in its own right, not only as
+  a test rig, and the open questions (reliability, file size, sending to an iPhone) are
+  pursued there.
+- The solution builds and the whole test suite passes on Linux through
+  `WinDrop.Linux.slnf`, which leaves out the two Windows-only projects.
+- Nothing is removed. The Windows app, the bridge and the transport seam stay as they are,
+  built and tested, because the layers above the radio are the same on both.
+
+The two meet again when Windows has a radio. Either the bridge run over a real `awdl0`,
+which needs only hardware, or Windows and its drivers offering a link an iPhone will
+AirDrop over, which is not WinDrop's to build.

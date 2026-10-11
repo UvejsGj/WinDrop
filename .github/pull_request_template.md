@@ -8,7 +8,7 @@
 
 ## Checklist
 
-- [ ] `dotnet test` passes
+- [ ] `dotnet test` passes (on Linux: `dotnet test WinDrop.Linux.slnf`)
 - [ ] New behaviour has a test that fails without the change
 - [ ] Protocol findings are recorded in `docs/protocol-notes.md`, dated, with their evidence
 - [ ] Consent, path checks and resource limits are untouched, or the change is tested against them (see `SECURITY.md`)

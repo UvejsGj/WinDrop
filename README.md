@@ -1,7 +1,14 @@
 # WinDrop
 
-An AirDrop implementation for Windows, built from scratch by reverse-engineering the
-protocol. Learning project: understanding over shortcuts, no wrapping of existing tools.
+An AirDrop implementation built from scratch by reverse-engineering the protocol. Learning
+project: understanding over shortcuts, no wrapping of existing tools.
+
+**This is the Linux branch.** WinDrop is AirDrop for Windows, and `main` is that project.
+But Windows cannot yet drive the radio link an iPhone uses
+([why](#the-one-thing-to-understand-first)), and every transfer with a real iPhone so far
+ran on Linux. This branch is where that side is worked on: the command line on Linux, with
+[OWL](https://github.com/seemoo-lab/owl) as the radio. Above the radio it is the same code
+as `main`, and the Windows side [still builds and is still tested here](#windows-pending).
 
 ## Status
 
@@ -14,8 +21,9 @@ protocol. Learning project: understanding over shortcuts, no wrapping of existin
 | 4. Discover → Ask → Upload state machine | **done** — verified against opendrop, an independent implementation |
 | 5. DVZip compression + CPIO `newc` archive | **done** — CPIO checked against bsdtar/libarchive |
 | 6. Reaching an iPhone | **working, slowly and intermittently** — real iPhones on iOS 26.6, 27.0 and 27.0.1 have AirDropped files to WinDrop, arriving intact. Over Linux + OWL, at 12–27 KB/s and roughly one transfer in three in recent sessions, on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
+| 7. Reaching an iPhone from Windows | **pending** — blocked below WinDrop, at the radio. See [Windows, pending](#windows-pending) |
 
-279 tests, all passing.
+284 tests, all passing, on Linux and on Windows.
 
 ## The one thing to understand first
 
@@ -29,6 +37,9 @@ This was argued structurally in [ADR-001](docs/adr-001-transport-selection.md) a
 confirmed by measurement: the captured beacon is 18 bytes, every one of them accounted
 for, with no field in which to name a channel, an address or a transport. **The beacon
 cannot redirect a peer anywhere.** It can only mean "wake AWDL".
+
+Linux can. OWL implements AWDL in user space on a card with monitor mode and frame
+injection, and presents it as an ordinary interface, `awdl0`.
 
 So everything above the link layer is built, tested and working, and has been proven
 against a real iPhone. The link layer is what limits it, and that is a hardware question,
@@ -49,7 +60,7 @@ whose upload mixed compressed and stored DVZip blocks. The log of every session 
 | WinDrop → iPhone | **untested**. The sender is proven only against opendrop |
 | Speed | **12–27 KB/s** in recent sessions on the one card tested (Intel AX211), 15–40 KB/s earlier. A 200 KB photo takes ~15 s, a 2.5 MB one ~100 s. Largest to arrive: 3.6 MB as one file, 6.4 MB as a four-photo share (267 s). ~25 MB fails |
 | Phone setting | **Everyone for 10 Minutes** only. Contacts Only requires an Apple-issued identity, which a non-Apple device cannot hold |
-| Windows alone | **cannot reach an iPhone** (see above). The radio has to be Linux: booted directly, or later a bridge |
+| Windows alone | **cannot reach an iPhone** (see above). The radio has to be Linux: booted directly, or later a bridge. See [Windows, pending](#windows-pending) |
 
 **The speed is the radio, not the protocol, and that is measured.** The AX211 can only
 run plain monitor mode, not *active* monitor mode, so it never acknowledges the frames the
@@ -63,14 +74,59 @@ The fix is an adapter whose Linux driver supports active monitor mode, typically
 on the `mt76` driver. [bridge-hardware-setup.md](docs/bridge-hardware-setup.md) has the
 criterion and a one-line test for any card.
 
-## Running it
+## Running it on Linux
 
+You need the .NET 8 SDK, [OWL](https://github.com/seemoo-lab/owl), and a Wi-Fi card that
+can do monitor mode and frame injection.
+[bridge-hardware-setup.md](docs/bridge-hardware-setup.md) has the test for any card and
+the record of the ones tried. Kali packages OWL (`sudo apt install owl`); elsewhere it is
+built from source, as that page shows.
+
+```bash
+dotnet publish src/WinDrop.Cli -c Release -o ~/wd
+
+bash tools/owl-session.sh          # terminal 1: takes the Wi-Fi card, brings up awdl0
+dotnet ~/wd/windrop.dll receive    # terminal 2: only once OWL is up
 ```
-dotnet build
-dotnet run --project src/WinDrop.App              # the GUI
-dotnet run --project src/WinDrop.Cli -- receive
-dotnet run --project src/WinDrop.Cli -- send path\to\file.jpg
-dotnet run --project src/WinDrop.Cli -- browse
+
+On the iPhone, set AirDrop to **Everyone for 10 Minutes**, keep it close to the machine,
+and share a photo. The receiver asks before it saves anything, and files land in
+`~/Downloads/WinDrop`.
+
+Three things to know:
+
+- **OWL takes the Wi-Fi card.** `owl-session.sh` stops NetworkManager and `wpa_supplicant`
+  and puts the card in monitor mode, so the machine is off its normal network while OWL
+  runs. Do anything that needs the internet first, the publish above included.
+- **Start OWL first, and stop it last.** Restarting OWL recreates `awdl0`, and a receiver
+  started earlier is left on no AWDL interface and never shows on the phone. The receiver
+  says at start which it is: `AWDL is joined, so an iPhone can be reached from here`, or
+  that there is no `awdl0` and what to do. Stop the receiver before OWL, so its goodbye can
+  still reach the phone.
+- **`owl-session.sh` is written for the one card tested**, an Intel AX211. It reloads the
+  `iwlwifi` driver first and runs OWL with `-N`, because that card refuses active monitor
+  mode. `RELOAD=0 bash tools/owl-session.sh` skips the reload on another card. A card
+  with active monitor mode should need neither; none has been on hand to try.
+
+If `dotnet` stops with a message about ICU, `export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`
+first.
+
+### Building and testing
+
+```bash
+dotnet test WinDrop.Linux.slnf
+```
+
+The filter leaves out the two Windows-only projects, the desktop app and the BLE sniffer.
+A plain `dotnet build` or `dotnet test` on Linux stops at them with `NETSDK1100`. Python
+3.12 is needed only to regenerate the bplist test fixtures, which are committed.
+
+### The commands
+
+```bash
+dotnet ~/wd/windrop.dll receive
+dotnet ~/wd/windrop.dll send path/to/file.jpg
+dotnet ~/wd/windrop.dll browse
 ```
 
 `receive` takes `--dir <path>`, `--yes` (skip the consent prompt — it is the only real
@@ -83,12 +139,38 @@ is not read until they say yes, so an unapproved sender gets no more than the `/
 it already had to send. A "no" is answered the moment the upload starts, without reading
 any of it. `--no-early-ask` restores the classic order.
 
-**Who this reaches from Windows:** another WinDrop instance, opendrop, or a Mac started
-with `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
+`send` has only ever been tested against opendrop and WinDrop itself. Sending **to** an
+iPhone has not been tried yet.
 
-**Reaching an iPhone** means running the receiver on Linux alongside OWL, which is how
-every iPhone transfer so far was made. On Linux, `awdl0` is an ordinary interface, so the
-CLI works there unchanged. The runbook is [bridge-hardware-setup.md](docs/bridge-hardware-setup.md).
+**Without OWL**, on Linux and Windows alike, the same commands work over an ordinary
+network and reach another WinDrop instance, opendrop, or a Mac started with
+`defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
+
+## Windows, pending
+
+Everything above the radio runs on Windows today: the desktop app, and the same three
+commands.
+
+```powershell
+dotnet build
+dotnet run --project src\WinDrop.App              # the GUI
+dotnet run --project src\WinDrop.Cli -- receive
+dotnet run --project src\WinDrop.Cli -- send path\to\file.jpg
+dotnet run --project src\WinDrop.Cli -- browse
+```
+
+That reaches the peers an ordinary network reaches, and not an iPhone. What Windows is
+waiting for is a radio, and there are two ways it could get one:
+
+- **A Linux radio lent to the Windows process.** This is the bridge, below. It is built,
+  and tested over an ordinary interface, but it needs a USB Wi-Fi adapter that can be
+  passed into WSL2, or a second machine. The built-in card cannot be passed through, and
+  no suitable adapter has been on hand.
+- **Windows gaining a link that an iPhone will AirDrop over.** Nothing in Windows or its
+  Wi-Fi drivers offers one today, and nothing WinDrop can do from user space changes that.
+
+That work belongs on `main`. This branch keeps the Windows side building and its tests
+passing, so the two stay one codebase and a fix made on either can move to the other.
 
 ### Bridge transport
 
@@ -147,13 +229,14 @@ dotnet run --project src/WinDrop.Tools.ContactHash -- --observed 1A2B,3C4D <iden
 ```
 
 The sniffer captures Apple Continuity BLE advertisements to `captures/*.jsonl`; open a
-share sheet on an iPhone and tap AirDrop while it runs. `contact-hash` tests whether a
-contact identifier reproduces a hash prefix seen in a beacon — it runs entirely locally
-and prints only digest prefixes, so an identifier never has to leave the machine.
+share sheet on an iPhone and tap AirDrop while it runs. It uses the Windows Bluetooth
+APIs, so it is Windows-only. `contact-hash` tests whether a contact identifier reproduces
+a hash prefix seen in a beacon — it runs entirely locally, on either platform, and prints
+only digest prefixes, so an identifier never has to leave the machine.
 
-## Environment prerequisite: Smart App Control
+### Development prerequisite: Smart App Control
 
-**Smart App Control (SAC) must be off on the development machine.**
+**Smart App Control (SAC) must be off on a Windows development machine.**
 
 SAC allows binaries by cloud reputation. A freshly compiled assembly has no reputation,
 so it is blocked at load with:
@@ -187,9 +270,6 @@ Windows RT events"), and `BluetoothLEAdvertisementWatcher.Start()` refuses to ru
 without a `Received` handler. `Add-Type` would compile an assembly and hit the same SAC
 block.
 
-Python 3.12 is also needed to regenerate the bplist test fixtures, but not to run the
-tests — the fixtures are committed.
-
 ## Layout
 
 ```
@@ -204,10 +284,11 @@ src/WinDrop.Protocol/
   AirDrop*.cs     the Discover/Ask/Upload state machine, both halves
   PeerText.cs     peer text made safe to show, and the rules for safe saved names
   PreviewImage.cs which preview bytes may reach an image decoder
-src/WinDrop.App/                    WPF desktop app, AirDrop-styled
-src/WinDrop.Cli/                    send / receive / browse
-src/WinDrop.Tools.ContinuitySniffer/  milestone 0 BLE capture
+src/WinDrop.Cli/                    send / receive / browse, on Linux and Windows
+src/WinDrop.App/                    WPF desktop app, AirDrop-styled (Windows only)
+src/WinDrop.Tools.ContinuitySniffer/  milestone 0 BLE capture (Windows only)
 src/WinDrop.Tools.ContactHash/        local contact-hash probe
+WinDrop.Linux.slnf                  the solution without the Windows-only projects
 tools/windrop-bridge.py             the Linux-side AWDL relay daemon
 tools/owl-session.sh                brings OWL up for a field session on Kali, and logs it
 tools/retry-capture.sh              counts the phone's resent frames during a transfer

@@ -20,9 +20,9 @@ body:
     attributes:
       label: Which part
       options:
-        - Windows app
-        - CLI on Windows
         - CLI on Linux with OWL
+        - CLI on Windows
+        - Windows app
         - Linux bridge (windrop-bridge.py)
         - Protocol library
         - Not sure

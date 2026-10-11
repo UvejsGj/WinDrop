@@ -1,14 +1,23 @@
 # Getting an AWDL radio, without a second computer
 
+**On this branch Linux comes first**, and this page serves two readers.
+To run WinDrop on Linux, the short version is
+[Running it on Linux](../README.md#running-it-on-linux); what you need from here is the
+card test in Phase 0 and the lessons under
+[What sessions 4 and 5 settled](#what-sessions-4-and-5-settled-about-this-link). Phases 1,
+2 and 6 are about lending that radio to Windows, which is
+[pending](../README.md#windows-pending).
+
 The bridge needs a Linux machine holding a Wi-Fi card that can do monitor mode and frame
 injection. `usbipd-win` removes the "second machine" half of that: a USB adapter can be
 passed straight into WSL2 on the same box.
 
-**Read this first.** There is real doubt about whether current iOS will talk to a
-non-Apple AirDrop peer at all — see the addendum in
-[ADR-001](adr-001-transport-selection.md). Phase 5 below is the experiment that settles
-it. **Do not do phase 6 until phase 5 passes.** If the iPhone never appears, everything
-after that is wasted effort, and knowing that is itself the result.
+**Read this first.** When this page was written there was real doubt about whether current
+iOS would talk to a non-Apple AirDrop peer at all — see the addendum in
+[ADR-001](adr-001-transport-selection.md). **That is settled: it does**, on iOS 26.6, 27.0
+and 27.0.1, and Phase 5 below is the experiment that showed it. On a new card or a new iOS
+version it is still the first thing to run, and **phase 6 is still not worth doing until
+phase 5 passes.**
 
 ## What this machine already has
 
