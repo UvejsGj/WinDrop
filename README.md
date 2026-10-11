@@ -11,6 +11,19 @@ ran on Linux. This branch is where that side is worked on: the command line on L
 [OWL](https://github.com/seemoo-lab/owl) as the radio. Above the radio it is the same code
 as `main`, and the Windows side [still builds and is still tested here](#windows-pending).
 
+## Branches
+
+The project is kept on three branches. `main` is the base. The other two build on it and
+are not merged back, and each has its own README.
+
+| Branch | What it is |
+|---|---|
+| [`main`](https://github.com/UvejsGj/WinDrop/tree/main) | AirDrop for Windows: the protocol library, the desktop app and the command line. Everything above the radio is built and tested; reaching an iPhone from Windows is what remains |
+| `linux` (this one) | The same code, worked on as a Linux command-line tool. Linux with OWL is the one setup that reaches an iPhone today, and every iPhone transfer recorded below ran on it. Adds a Linux build and a README that starts from Linux |
+| [`phone-page`](https://github.com/UvejsGj/WinDrop/tree/phone-page) | A separate route between an iPhone and a Windows PC, which is not AirDrop: the phone scans a code on the PC and sends files both ways in Safari, over ordinary Wi-Fi. No extra hardware and no Linux |
+
+Changes to the shared protocol code belong on `main`, and this branch takes them from it.
+
 ## Status
 
 | Milestone | State |
