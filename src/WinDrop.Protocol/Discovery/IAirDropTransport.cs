@@ -16,8 +16,10 @@ namespace WinDrop.Protocol.Discovery;
 ///   InfraWifiTransport  - mDNS over ordinary LAN. Peers: a Mac with
 ///                         `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`,
 ///                         and opendrop. Good enough to validate the whole app layer.
+///                         On Linux with OWL running, awdl0 is one more interface to it,
+///                         and that is how an iPhone has been reached.
 ///   BridgeTransport     - relays to a Linux host running OWL on a real awdl0.
-///                         The only implementation that can reach an iPhone.
+///                         The way for a Windows process to reach an iPhone.
 ///   WifiDirectTransport - WinRT Wi-Fi Direct. Peers: our own software only.
 ///                         Cannot reach an iPhone (see ADR-001).
 /// </summary>

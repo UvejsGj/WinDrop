@@ -1,0 +1,11 @@
+{
+  "solution": {
+    "path": "WinDrop.sln",
+    "projects": [
+      "src\\WinDrop.Cli\\WinDrop.Cli.csproj",
+      "src\\WinDrop.Protocol\\WinDrop.Protocol.csproj",
+      "src\\WinDrop.Tools.ContactHash\\WinDrop.Tools.ContactHash.csproj",
+      "tests\\WinDrop.Protocol.Tests\\WinDrop.Protocol.Tests.csproj"
+    ]
+  }
+}

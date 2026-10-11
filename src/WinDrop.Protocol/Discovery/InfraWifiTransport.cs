@@ -13,10 +13,12 @@ namespace WinDrop.Protocol.Discovery;
 /// interface: another WinDrop instance, opendrop, and a Mac started with
 /// `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
 ///
-/// WHO THIS CANNOT REACH. An iPhone. iOS binds AirDrop's browser to awdl0 and offers no
-/// override, so it will never see this service no matter how correct the records are.
-/// That is not a defect in this class — it is the constraint recorded in ADR-001, and
-/// the reason <see cref="BridgeTransport"/> exists.
+/// AN IPHONE, ONLY OVER AWDL. iOS binds AirDrop's browser to awdl0 and offers no override,
+/// so on an ordinary network it will never see this service no matter how correct the
+/// records are. That is the constraint recorded in ADR-001. On Linux, OWL creates awdl0 as
+/// an ordinary interface, mDNS joins it like any other, and this same class is then what
+/// every iPhone transfer so far has run over. Windows has no such interface, which is the
+/// reason <see cref="BridgeTransport"/> exists.
 /// </summary>
 public sealed class InfraWifiTransport : IAirDropTransport
 {
@@ -31,11 +33,21 @@ public sealed class InfraWifiTransport : IAirDropTransport
 
     public string Name => "infra-wifi";
 
-    /// <summary>See the class remarks: correct records, wrong link layer for an iPhone.</summary>
-    public bool CanReachAppleDevices => false;
+    /// <summary>
+    /// True once mDNS has joined an AWDL interface, which is the only link an iPhone looks
+    /// on. False until first used, and on any machine without one: there the records are
+    /// correct and the link layer is wrong.
+    /// </summary>
+    public bool CanReachAppleDevices => ListeningOn.Any(IsAwdl);
 
     /// <summary>Where mDNS was joined, as "name/family". Empty until first used.</summary>
     public IReadOnlyList<string> ListeningOn => _mdns.InterfaceNames;
+
+    /// <summary>
+    /// Whether a joined interface is OWL's. It names the interface awdl0 unless started
+    /// with -h, so the prefix is matched, not the whole name.
+    /// </summary>
+    internal static bool IsAwdl(string joined) => joined.StartsWith("awdl", StringComparison.Ordinal);
 
     private void EnsureStarted()
     {

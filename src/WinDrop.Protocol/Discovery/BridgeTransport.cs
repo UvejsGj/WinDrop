@@ -79,8 +79,9 @@ public sealed class BridgeTransport : IAirDropTransport
     public string Name => "bridge";
 
     /// <summary>
-    /// The only transport that can. Whether a current iPhone still *accepts* one is a
-    /// separate and unresolved question — see the addendum in ADR-001.
+    /// The bridge holds a real awdl0. A current iPhone does accept a non-Apple peer over
+    /// one, which the field sessions settled; the bridge itself has not yet been run over
+    /// awdl0, only over an ordinary interface.
     /// </summary>
     public bool CanReachAppleDevices => true;
 

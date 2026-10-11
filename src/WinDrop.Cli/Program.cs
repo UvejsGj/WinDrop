@@ -6,15 +6,16 @@ using WinDrop.Protocol;
 using WinDrop.Protocol.Discovery;
 using WinDrop.Protocol.Tls;
 
-// WinDrop CLI. Two commands, both over the infrastructure-Wi-Fi transport:
+// WinDrop CLI. Three commands, over every interface mDNS can join:
 //
 //   receive [--dir <path>]   advertise over mDNS and accept transfers
 //   send <file> [file...]    browse for a peer, ask, and upload
 //   browse                   list peers and stop
 //
-// This reaches another WinDrop instance, opendrop, or a Mac running with
-// BrowseAllInterfaces enabled. It does NOT reach an iPhone: iOS binds AirDrop's browser
-// to awdl0, which Windows cannot join. See docs/adr-001-transport-selection.md.
+// On an ordinary network this reaches another WinDrop instance, opendrop, or a Mac running
+// with BrowseAllInterfaces enabled. An iPhone is different: iOS binds AirDrop's browser to
+// awdl0. On Linux, OWL provides that interface and these same commands reach the phone
+// over it. Windows cannot join it. See docs/adr-001-transport-selection.md.
 
 if (args.Length == 0)
 {
@@ -55,19 +56,19 @@ catch (Exception ex)
 static int PrintUsage()
 {
     Console.WriteLine("""
-        WinDrop - an AirDrop implementation for Windows
+        WinDrop - an AirDrop implementation, written from scratch
 
           windrop receive [--dir <path>] [--port <n>] [--flags <hex>] [--yes] [--no-early-ask]
           windrop send [--to <name>| --peer <host>] [--icon <image>] <file> [file...]
           windrop browse                   list nearby peers
 
-        Add --bridge <host> to any command to use a Linux box running OWL as the radio.
-
         On an ordinary network, reaches another WinDrop instance, opendrop, or a Mac with
         `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
 
-        An iPhone only looks for AirDrop on awdl0, a link layer Windows cannot join.
-        It is reachable from Linux running OWL, directly or through --bridge.
+        An iPhone only looks for AirDrop on awdl0. On Linux, start OWL first
+        (tools/owl-session.sh) and these same commands reach the phone over it.
+        Windows cannot join that link layer. From there, add --bridge <host> to any
+        command to use a Linux box running OWL as the radio.
         See docs/adr-001-transport-selection.md.
         """);
 
@@ -135,7 +136,11 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
     Console.WriteLine($"Receiving as '{instance}' on port {record.Port}");
 
     if (transport is InfraWifiTransport infra)
+    {
         Console.WriteLine($"mDNS on {string.Join(", ", infra.ListeningOn)}");
+        Console.WriteLine(ConsoleText.RadioNote(infra.CanReachAppleDevices, OperatingSystem.IsLinux()));
+    }
+
     Console.WriteLine($"Saving to {directory}");
     Console.WriteLine("Ctrl+C to stop.\n");
 
@@ -228,8 +233,9 @@ static async Task<int> BrowseAsync(string[] args, CancellationToken ct)
 
     Console.WriteLine($"\n{found} peer(s).");
 
-    if (found == 0)
-        Console.WriteLine("No peers. An iPhone will never appear here - see docs/adr-001-transport-selection.md.");
+    // Said only when it explains an empty list. With AWDL joined, an empty list is just that.
+    if (found == 0 && transport is InfraWifiTransport { CanReachAppleDevices: false })
+        Console.WriteLine(ConsoleText.RadioNote(joinedAwdl: false, OperatingSystem.IsLinux()));
 
     return 0;
 }
@@ -421,10 +427,11 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
 
 
 /// <summary>
-/// Picks the transport. Without --bridge we drive the local radio over mDNS, which
-/// reaches other WinDrop instances, opendrop and a Mac with BrowseAllInterfaces. With
-/// it, a Linux box running OWL lends us its AWDL interface — the only route to an
-/// iPhone, and the only one that has never been tested against a real device.
+/// Picks the transport. Without --bridge we use this machine's own interfaces over mDNS,
+/// which reaches other WinDrop instances, opendrop and a Mac with BrowseAllInterfaces, and
+/// on Linux with OWL running, an iPhone. With it, a Linux box running OWL lends us its
+/// AWDL interface. That is the route to an iPhone from Windows, and the one route that has
+/// never been tested against a real device.
 /// </summary>
 static IAirDropTransport CreateTransport(string[] args)
 {

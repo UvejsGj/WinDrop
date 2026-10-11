@@ -60,4 +60,19 @@ internal static class ConsoleText
         LogLine(time, handshakeDone
             ? $"connection failed: {message}"
             : $"connection failed during the TLS handshake, before any request: {message}");
+
+    /// <summary>
+    /// Whether an iPhone can be reached from here, said outright at start.
+    ///
+    /// It used to be read off the interface list by eye, and the runbook had to say so. The
+    /// case it catches is common: restarting OWL destroys and recreates awdl0, and a receiver
+    /// started before OWL, or left running across a restart, is on no AWDL interface and just
+    /// never appears on the phone, with nothing printed to say why.
+    /// </summary>
+    public static string RadioNote(bool joinedAwdl, bool onLinux) =>
+        joinedAwdl
+            ? "AWDL is joined, so an iPhone can be reached from here."
+            : onLinux
+                ? "No awdl0 interface, so no iPhone can be reached. Start OWL first (tools/owl-session.sh), then run this again."
+                : "No awdl0 interface, so no iPhone can be reached. Only Linux with OWL provides one; see the README.";
 }

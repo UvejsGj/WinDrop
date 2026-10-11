@@ -130,5 +130,29 @@ public class PeerTextTests
         Assert.DoesNotContain('\u001b', ConsoleText.ConnectionError(at, true, "member '\u001b[2J' escapes"));
     }
 
+    [Fact]
+    public void The_radio_note_says_whether_an_iphone_can_be_reached_and_what_to_do()
+    {
+        // A receiver started before OWL joins no AWDL interface and never shows on the phone.
+        // On Linux that has a fix worth printing; elsewhere the advice would be wrong.
+        Assert.Contains("can be reached", ConsoleText.RadioNote(joinedAwdl: true, onLinux: true));
+
+        string linux = ConsoleText.RadioNote(joinedAwdl: false, onLinux: true);
+        Assert.Contains("no iPhone can be reached", linux);
+        Assert.Contains("tools/owl-session.sh", linux);
+
+        string elsewhere = ConsoleText.RadioNote(joinedAwdl: false, onLinux: false);
+        Assert.Contains("no iPhone can be reached", elsewhere);
+        Assert.DoesNotContain("owl-session", elsewhere);
+    }
+
+    [Theory]
+    [InlineData("awdl0/IPv6", true)]
+    [InlineData("awdl1/IPv6", true)]
+    [InlineData("wlan0/IPv6", false)]
+    [InlineData("eth0/IPv4", false)]
+    public void Only_an_awdl_interface_counts_as_reaching_an_iphone(string joined, bool expected) =>
+        Assert.Equal(expected, WinDrop.Protocol.Discovery.InfraWifiTransport.IsAwdl(joined));
+
     private static bool IsUnsafe(char c) => char.IsControl(c) || BidiFormatting.Contains(c);
 }
