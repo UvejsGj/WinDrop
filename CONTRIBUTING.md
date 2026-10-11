@@ -5,7 +5,7 @@ reverse-engineering the protocol. Understanding comes before speed here. Contrib
 welcome in that spirit, and a correct explanation of why something works is worth as much
 as the code that does it.
 
-This is the Linux branch. Linux is the one platform that can reach an iPhone today; the
+This is the `linux` branch. Linux is the one platform that can reach an iPhone today; the
 README says [why](README.md#the-one-thing-to-understand-first) and what
 [Windows is waiting for](README.md#windows-pending). Work on the Windows app belongs on
 `main`.

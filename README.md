@@ -3,7 +3,8 @@
 An AirDrop implementation built from scratch by reverse-engineering the protocol. Learning
 project: understanding over shortcuts, no wrapping of existing tools.
 
-**This is the Linux branch.** WinDrop is AirDrop for Windows, and `main` is that project.
+**This is the `linux` branch.** WinDrop is AirDrop for Windows, and
+[`main`](https://github.com/UvejsGj/WinDrop/tree/main) is that project.
 But Windows cannot yet drive the radio link an iPhone uses
 ([why](#the-one-thing-to-understand-first)), and every transfer with a real iPhone so far
 ran on Linux. This branch is where that side is worked on: the command line on Linux, with
@@ -83,11 +84,17 @@ the record of the ones tried. Kali packages OWL (`sudo apt install owl`); elsewh
 built from source, as that page shows.
 
 ```bash
+git clone -b linux https://github.com/UvejsGj/WinDrop.git
+cd WinDrop
 dotnet publish src/WinDrop.Cli -c Release -o ~/wd
 
 bash tools/owl-session.sh          # terminal 1: takes the Wi-Fi card, brings up awdl0
 dotnet ~/wd/windrop.dll receive    # terminal 2: only once OWL is up
 ```
+
+Without `-b linux` the clone is `main`. It runs on Linux just the same, since the code
+above the radio is shared, but it has neither the solution filter nor the receiver's line
+about AWDL described below.
 
 On the iPhone, set AirDrop to **Everyone for 10 Minutes**, keep it close to the machine,
 and share a photo. The receiver asks before it saves anything, and files land in
@@ -97,7 +104,7 @@ Three things to know:
 
 - **OWL takes the Wi-Fi card.** `owl-session.sh` stops NetworkManager and `wpa_supplicant`
   and puts the card in monitor mode, so the machine is off its normal network while OWL
-  runs. Do anything that needs the internet first, the publish above included.
+  runs. Do anything that needs the internet first, the clone and publish above included.
 - **Start OWL first, and stop it last.** Restarting OWL recreates `awdl0`, and a receiver
   started earlier is left on no AWDL interface and never shows on the phone. The receiver
   says at start which it is: `AWDL is joined, so an iPhone can be reached from here`, or
