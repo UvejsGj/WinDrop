@@ -203,6 +203,26 @@ bash ~/WinDrop/tools/owl-counts.sh              # any time: the OWL log lines a 
   way when it stops. `session-receive.sh` adds `--repeat` by itself when
   `owl-exclusive.sh` is up, and `REPEAT=0` leaves it out.
 
+### The old bring-up with a patched OWL (untested on real hardware)
+
+`tools/owl-session-patched.sh` does exactly what `owl-session.sh` does, but runs the OWL
+that `tools/owl-build.sh` builds into `~/owl-patched/owl`: an OWL fork with
+[omdrop-owl](https://github.com/t4t5/omdrop-owl)'s patches, one of which is written for the
+stall this card keeps hitting. Only the OWL changes; the card stays in plain monitor mode on
+channel 6. It has not yet been run on the laptop.
+
+```bash
+bash ~/WinDrop/tools/owl-build.sh              # while still online
+bash ~/WinDrop/tools/owl-session-patched.sh    # terminal 1, in place of owl-session.sh
+```
+
+It runs that OWL with `-S pin -F`, the only options that keep stock OWL's channel sequence,
+channel 6 in all 16 slots, and with it the radio on channel 6. `-F` also sends unicast once
+without retries and multicast in any slot, so a success here is not the reliability patch
+alone; the script says why each option was chosen. The build also bounds a write in OWL's
+A-MSDU receive path that Kali's package (`0~git20220130`, upstream OWL as of January 2022)
+leaves unbounded.
+
 ### Building and testing
 
 ```bash
@@ -387,8 +407,9 @@ tools/windrop-bridge.py             the Linux-side AWDL relay daemon
 tools/session-setup.sh              a field session's installs, build and Wi-Fi scan, in one command
 tools/owl-session.sh                brings OWL up for a field session on Kali, and logs it
 tools/owl-exclusive.sh              the same with an ad-hoc interface beside the monitor one (untested on real hardware)
-tools/owl-build.sh                  builds the patched OWL that owl-exclusive.sh needs, beside the packaged one
+tools/owl-build.sh                  builds the patched OWL for owl-exclusive.sh and owl-session-patched.sh, beside the packaged one
 tools/owl-counts.sh                 counts the OWL log lines a field session records
+tools/owl-session-patched.sh        the same, with the patched OWL; untested on real hardware
 tools/session-receive.sh            starts the receiver the way a field session does
 tools/retry-capture.sh              counts the phone's resent frames during a transfer
 tools/rehearse/                     rehearses the OWL scripts on a machine with no Wi-Fi card, against stand-ins
