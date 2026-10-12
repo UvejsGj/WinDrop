@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.png">
+  <img src="assets/banner-light.png" width="100%" alt="Windfall. AirDrop for Windows and Linux, rebuilt from the bytes up.">
+</picture>
+
 # Windfall
 
 An AirDrop implementation for Windows, built from scratch by reverse-engineering the
@@ -232,7 +237,8 @@ tools/owl-session.sh                brings OWL up for a field session on Kali, a
 tools/retry-capture.sh              counts the phone's resent frames during a transfer
 tools/plist_oracle.py               plistlib fixtures and differential oracle
 docs/                               ADRs and reverse-engineering notes
-site/                               the project website, one self-contained page
+site/                               the project website: one page and its link-preview image
+assets/                             the mark the icon is drawn from, and the README banner
 ```
 
 ## On testing

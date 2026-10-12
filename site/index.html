@@ -8,7 +8,11 @@
 <meta property="og:title" content="Windfall">
 <meta property="og:description" content="AirDrop for Windows and Linux, rebuilt from the bytes up.">
 <meta property="og:type" content="website">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34'%3E%3Cpath d='M17 10C12 6 4 9 4 18c0 8 6 14 13 12 7 2 13-4 13-12 0-9-8-12-13-8Z' fill='%23BF2E2A'/%3E%3Cpath d='M17 10c0-3 1-5 3-7' fill='none' stroke='%2318211B' stroke-width='1.8' stroke-linecap='round'/%3E%3Cpath d='M20 5c3-3 7-3 9-1-2 3-6 3-9 1Z' fill='%233A7738'/%3E%3C/svg%3E">
+<meta property="og:image" content="https://uvejsgj.github.io/Windfall/social-card.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cmask id='g' maskUnits='userSpaceOnUse' x='-4' y='-4' width='24' height='24'%3E%3Crect x='-4' y='-4' width='24' height='24' fill='%23fff'/%3E%3Cpath d='M-2 9H7' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3C/mask%3E%3Cg mask='url(%23g)'%3E%3Cpath fill='%23BF2E2A' transform='translate(8.11 7.18) rotate(12) scale(0.2) translate(-50 -48)' d='M50 31C45 25 37 23 30 25C19 28 12 38 12 50C12 67 23 87 36 88C42 88.5 46 86 50 86C54 86 58 88.5 64 88C77 87 88 67 88 50C88 38 81 28 70 25C63 23 55 25 50 31Z'/%3E%3C/g%3E%3Cg fill='%2337722F' transform='translate(8.11 7.18) rotate(12) scale(0.2) translate(-50 -48)'%3E%3Crect x='46.5' y='14' width='11' height='20' rx='5.5' transform='rotate(14 52 30)'/%3E%3Cpath d='M54 24C56 12 66 7 79 8C78 20 68 28 54 24Z'/%3E%3C/g%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap">
 <style>
 /* Layout: a field notebook. Section labels sit in a narrow left margin and the content
@@ -31,7 +35,7 @@
   --body: "Instrument Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
 
-  --apple: 34px;
+  --apple: 42px;
   --gutter: clamp(16px, 4vw, 40px);
 }
 @media (prefers-color-scheme: dark) {
@@ -107,7 +111,7 @@ code { font-size: .88em; background: var(--tint-stem); padding: .1em .35em; bord
 .drop li.land { min-height: var(--apple); align-content: center; }
 .drop li.land::before { display: none; }
 .drop li.land .st { color: var(--skin); }
-.drop .apple { position: absolute; display: block; left: 0; top: calc(100% - var(--apple)); width: var(--apple); height: var(--apple); animation: fall 2.4s cubic-bezier(.55, .085, .68, .53) .4s backwards, settle .45s ease-out 2.8s; }
+.drop .apple { position: absolute; display: block; left: calc(17px - var(--apple) / 2); top: calc(100% - var(--apple)); width: var(--apple); height: var(--apple); animation: fall 2.4s cubic-bezier(.55, .085, .68, .53) .4s backwards, settle .45s ease-out 2.8s; }
 .drop .apple::before { display: none; }
 .drop .apple svg { display: block; width: 100%; height: 100%; }
 @keyframes fall { from { top: -8px; } }
@@ -224,7 +228,7 @@ footer nav { display: flex; flex-wrap: wrap; gap: 6px 22px; color: var(--seed); 
 
   <div class="top">
     <a class="brand" href="#top" aria-label="Windfall">
-      <svg viewBox="0 0 34 34" aria-hidden="true"><path d="M17 10C12 6 4 9 4 18c0 8 6 14 13 12 7 2 13-4 13-12 0-9-8-12-13-8Z" fill="var(--skin)"/><path d="M17 10c0-3 1-5 3-7" fill="none" stroke="var(--seed)" stroke-width="1.8" stroke-linecap="round"/><path d="M20 5c3-3 7-3 9-1-2 3-6 3-9 1Z" fill="var(--leaf)"/></svg>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><mask id="wf-gust-a" maskUnits="userSpaceOnUse" x="-4" y="-4" width="24" height="24"><rect x="-4" y="-4" width="24" height="24" fill="#fff"/><path d="M-2 9H7" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round"/></mask><g mask="url(#wf-gust-a)"><path fill="var(--skin)" transform="translate(8.11 7.18) rotate(12) scale(0.2) translate(-50 -48)" d="M50 31C45 25 37 23 30 25C19 28 12 38 12 50C12 67 23 87 36 88C42 88.5 46 86 50 86C54 86 58 88.5 64 88C77 87 88 67 88 50C88 38 81 28 70 25C63 23 55 25 50 31Z"/></g><g fill="var(--leaf)" transform="translate(8.11 7.18) rotate(12) scale(0.2) translate(-50 -48)"><rect x="46.5" y="14" width="11" height="20" rx="5.5" transform="rotate(14 52 30)"/><path d="M54 24C56 12 66 7 79 8C78 20 68 28 54 24Z"/></g></svg>
       Windfall
     </a>
     <nav aria-label="Sections">
@@ -274,7 +278,7 @@ footer nav { display: flex; flex-wrap: wrap; gap: 6px 22px; color: var(--seed); 
           <li style="--t:1.96s"><span class="st">/Ask</span><span class="sd">the names, a preview, and your yes or no</span></li>
           <li style="--t:2.19s"><span class="st">/Upload</span><span class="sd">a CPIO archive inside DVZip compression</span></li>
           <li class="land" style="--t:2.4s"><span class="st">Downloads/Windfall</span><span class="sd">whole, or not at all</span></li>
-          <li class="apple" aria-hidden="true"><svg viewBox="0 0 34 34"><path d="M17 10C12 6 4 9 4 18c0 8 6 14 13 12 7 2 13-4 13-12 0-9-8-12-13-8Z" fill="var(--skin)"/><path d="M17 10c0-3 1-5 3-7" fill="none" stroke="var(--seed)" stroke-width="1.8" stroke-linecap="round"/><path d="M20 5c3-3 7-3 9-1-2 3-6 3-9 1Z" fill="var(--leaf)"/></svg></li>
+          <li class="apple" aria-hidden="true"><svg viewBox="0 0 100 100"><mask id="wf-gust-b" maskUnits="userSpaceOnUse" x="-20" y="-20" width="140" height="140"><rect x="-20" y="-20" width="140" height="140" fill="#fff"/><path d="M-20 43H47M-20 60H35" fill="none" stroke="#000" stroke-width="8" stroke-linecap="round"/></mask><g mask="url(#wf-gust-b)"><path fill="var(--skin)" transform="translate(51 50) rotate(12) scale(0.9) translate(-50 -48)" d="M50 31C45 25 37 23 30 25C19 28 12 38 12 50C12 67 23 87 36 88C42 88.5 46 86 50 86C54 86 58 88.5 64 88C77 87 88 67 88 50C88 38 81 28 70 25C63 23 55 25 50 31Z"/></g><g fill="var(--leaf)" transform="translate(51 50) rotate(12) scale(0.9) translate(-50 -48)"><rect x="48" y="12" width="7" height="22" rx="3.5" transform="rotate(14 51.5 30)"/><path d="M53 23C56 13 66 8 78 9C76 19 66 26 53 23Z"/></g></svg></li>
         </ol>
       </div>
     </section>

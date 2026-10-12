@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+    <mask id="gusts" maskUnits="userSpaceOnUse" x="-100" y="-100" width="300" height="300">
+      <rect x="-100" y="-100" width="300" height="300" fill="#fff" />
+      <path d="M-20 43H47M-20 60H35" fill="none" stroke="#000" stroke-width="8" stroke-linecap="round" />
+    </mask>
+  </defs>
+  <g transform="translate(-144.5 -186.1) scale(13)">
+    <g mask="url(#gusts)">
+      <path fill="#BF2E2A" transform="translate(51 50) rotate(12) scale(0.9) translate(-50 -48)" d="M50 31C45 25 37 23 30 25C19 28 12 38 12 50C12 67 23 87 36 88C42 88.5 46 86 50 86C54 86 58 88.5 64 88C77 87 88 67 88 50C88 38 81 28 70 25C63 23 55 25 50 31Z" />
+    </g>
+    <g fill="#37722F" transform="translate(51 50) rotate(12) scale(0.9) translate(-50 -48)">
+      <rect x="48" y="12" width="7" height="22" rx="3.5" transform="rotate(14 51.5 30)" />
+      <path d="M53 23C56 13 66 8 78 9C76 19 66 26 53 23Z" />
+    </g>
+  </g>
+</svg>
