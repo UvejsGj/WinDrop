@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# One stand-in for every command owl-exclusive.sh runs against the radio. Linked under each
+# name; what it pretends is decided by the name it was called by and by FAKE_* variables.
+# State lives in $FAKE_STATE, the pretend /sys/class/net is $FAKE_NET (bind-mounted there).
+set -u
+name=$(basename "$0")
+net=/sys/class/net
+log() { echo "$name $*" >> "$FAKE_STATE/commands"; }
+
+# FAKE_SLOW makes every radio command take that long, so a Ctrl+C can land mid-way.
+case "$name" in iw|ip) [ -n "${FAKE_SLOW:-}" ] && sleep "$FAKE_SLOW" ;; esac
+
+# The card under test: its radio's name and its driver. A new interface belongs to it.
+phy_now() { cat "$FAKE_STATE/phyname"; }
+make_iface() {  # NAME TYPE ADDRESS
+  local driver; driver=$(cat "$FAKE_STATE/drivername")
+  mkdir -p "$net/$1/phy80211" "$FAKE_STATE/drivers/$driver"
+  phy_now > "$net/$1/phy80211/name"
+  echo "$3" > "$net/$1/address"
+  echo "$2" > "$FAKE_STATE/type.$1"
+  echo down > "$FAKE_STATE/link.$1"
+  mkdir -p "$net/$1/device"
+  ln -sfn "$FAKE_STATE/drivers/$driver" "$net/$1/device/driver"
+}
+
+case "$name" in
+  sudo) exec "$@" ;;
+
+  airmon-ng|xset) log "$@" ;;
+
+  systemctl)
+    log "$@"
+    if [ "$1" = is-active ]; then [ "${FAKE_NM:-running}" = running ]; exit; fi
+    ;;
+
+  modprobe)
+    log "$@"
+    if [ "$1" = -r ]; then
+      rm -rf "$net"/wlan0 "$net"/mon0 "$net"/awdlibss0 "$FAKE_STATE"/type.* "$FAKE_STATE"/link.* "$FAKE_STATE"/joined.*
+    elif [ "${FAKE_RELOAD:-back}" = back ]; then
+      # A reloaded driver registers its radio under the next name: phy0 becomes phy1.
+      n=$(phy_now); echo "phy$(( ${n#phy} + 1 ))" > "$FAKE_STATE/phyname"
+      make_iface wlan0 managed 02:11:22:33:44:55
+    fi
+    ;;
+
+  sysctl)
+    log "$@"
+    [ "$1" = -n ] && echo 0
+    exit 0
+    ;;
+
+  ip)
+    log "$@"
+    # ip link set IF down|up|address M
+    if [ "$1 $2" = "link set" ]; then
+      [ -d "$net/$3" ] || { echo "Cannot find device \"$3\"" >&2; exit 1; }
+      case "$4" in
+        up|down) echo "$4" > "$FAKE_STATE/link.$3" ;;
+        address) echo "$5" > "$net/$3/address" ;;
+      esac
+    fi
+    ;;
+
+  iw)
+    log "$@"
+    # A radio that is not the card's own does not exist, phy0 included.
+    if [ "$1" = phy ] && [ "$2" != "$(phy_now)" ]; then
+      echo "command failed: No such device (-19)" >&2; exit 237
+    fi
+    case "$*" in
+      "phy "*" interface add awdlibss0 type ibss")
+        if [ "${FAKE_SEPARATE:-yes}" != yes ]; then
+          echo "command failed: Operation not supported (-95)" >&2; exit 161
+        fi
+        make_iface awdlibss0 ibss 02:11:22:33:44:56 ;;
+      "phy "*" interface add mon0 type monitor")
+        if [ "${FAKE_MONITOR:-yes}" != yes ]; then
+          echo "command failed: Device or resource busy (-16)" >&2; exit 240
+        fi
+        make_iface mon0 monitor 02:11:22:33:44:57 ;;
+      "dev "*" del")
+        [ -d "$net/$2" ] || { echo "command failed: No such device (-19)" >&2; exit 237; }
+        rm -rf "$net/$2" "$FAKE_STATE/type.$2" "$FAKE_STATE/link.$2" "$FAKE_STATE/joined.$2" ;;
+      "dev "*" set type "*)
+        [ "$(cat "$FAKE_STATE/link.$2")" = down ] || { echo "command failed: Device or resource busy (-16)" >&2; exit 240; }
+        if [ "$5" = ibss ] && [ "${FAKE_CONVERT:-yes}" != yes ]; then
+          echo "command failed: Operation not supported (-95)" >&2; exit 161
+        fi
+        # Only the way back from ad-hoc is refused, not the first tidy-up.
+        if [ "$5" = managed ] && [ "${FAKE_RESTORE:-yes}" != yes ] && [ "$(cat "$FAKE_STATE/type.$2")" = ibss ]; then
+          echo "command failed: Device or resource busy (-16)" >&2; exit 240
+        fi
+        echo "$5" > "$FAKE_STATE/type.$2" ;;
+      "dev "*" ibss join "*)
+        [ "$(cat "$FAKE_STATE/type.$2" 2>/dev/null)" = ibss ] || { echo "command failed: Operation not supported (-95)" >&2; exit 161; }
+        [ "$(cat "$FAKE_STATE/link.$2")" = up ] || { echo "command failed: Network is down (-100)" >&2; exit 156; }
+        case "${FAKE_JOIN:-yes}" in
+          refuse) echo "command failed: Invalid argument (-22)" >&2; exit 234 ;;
+          never) ;;
+          *) : > "$FAKE_STATE/joined.$2" ;;
+        esac ;;
+      "dev "*" ibss leave")
+        [ -e "$FAKE_STATE/joined.$2" ] || { echo "command failed: Not connected (-107)" >&2; exit 149; }
+        rm -f "$FAKE_STATE/joined.$2" ;;
+      "dev "*" link")
+        if [ -e "$FAKE_STATE/joined.$2" ]; then
+          printf 'Joined IBSS 00:25:00:ff:94:73 (on %s)\n\tSSID: windrop\n\tfreq: 2437\n' "$2"
+        else
+          echo "Not connected."
+        fi ;;
+      "dev "*" info")
+        [ -d "$net/$2" ] || { echo "command failed: No such device (-19)" >&2; exit 237; }
+        printf 'Interface %s\n\tifindex 3\n\taddr %s\n\ttype %s\n\twiphy 0\n' "$2" "$(cat "$net/$2/address")" "$(cat "$FAKE_STATE/type.$2")"
+        [ -e "$FAKE_STATE/joined.$2" ] && printf '\tchannel 6 (2437 MHz), width: 20 MHz, center1: 2437 MHz\n'
+        ;;
+      *) echo "fake iw: unexpected: $*" >&2; exit 99 ;;
+    esac
+    ;;
+
+  owl)
+    log "$@"
+    echo "            Open Wireless Link"
+    if [ "${FAKE_OWL:-run}" = fail ]; then
+      echo "12:00:00 ERROR: Could not open device: mon0"
+      exit 1
+    fi
+    mkdir -p "$net/awdl0"
+    echo "12:00:01 INFO: election: by metric, then counter"
+    echo "12:00:02 INFO: add peer aa:bb:cc:dd:ee:ff (iPhone)"
+    echo "12:00:03 WARN: awdl_action: could not add peer: 11:22:33:44:55:66 (-1)"
+    echo "12:00:09 INFO: remove peer aa:bb:cc:dd:ee:ff (iPhone)"
+    echo "12:00:09 DEBUG: Drop frame to non-peer aa:bb:cc:dd:ee:ff"
+    echo "12:00:10 INFO: add peer aa:bb:cc:dd:ee:ff (iPhone)"
+    exec sleep 1000
+    ;;
+
+  *) echo "fake: called as $name" >&2; exit 98 ;;
+esac
