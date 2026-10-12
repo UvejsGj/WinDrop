@@ -4,7 +4,7 @@ Does not rely on the _services._dns-sd meta-query, which may or may not be answe
 Just listens to the multicast group and parses whatever arrives, so anything that
 speaks up is seen.
 
-A WinDrop receiver should be running alongside this as a positive control: if the
+A Windfall receiver should be running alongside this as a positive control: if the
 control does not appear, the instrument is broken and a negative result means nothing.
 """
 

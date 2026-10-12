@@ -1,4 +1,4 @@
-"""Third-party validation of WinDrop's mDNS records.
+"""Third-party validation of Windfall's mDNS records.
 
 python-zeroconf is an independent implementation of multicast DNS. Our own browser
 finding our own responder proves only that they share any misreading, so this browses

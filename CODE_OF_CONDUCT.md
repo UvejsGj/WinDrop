@@ -1,6 +1,6 @@
 # Code of conduct
 
-WinDrop adopts the [Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/)
+Windfall adopts the [Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/)
 as its code of conduct. Everyone taking part in issues, pull requests and discussions here
 is expected to follow it.
 

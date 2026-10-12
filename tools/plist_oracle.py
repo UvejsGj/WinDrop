@@ -28,7 +28,7 @@ if hasattr(sys.stdout, "reconfigure"):
 # will need in milestone 4, kept here so the codec is exercised on the real thing
 # rather than on synthetic data alone.
 ASK = {
-    "SenderComputerName": "WinDrop",
+    "SenderComputerName": "Windfall",
     "BundleID": "com.apple.finder",
     "SenderModelName": "Windows",
     "SenderID": "0F8A3C21-4E7B-4A9D-9C2E-1B5D7E3F6A80",

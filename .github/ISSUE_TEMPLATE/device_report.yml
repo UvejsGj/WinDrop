@@ -1,10 +1,10 @@
 name: Device test result
-description: How WinDrop behaved with a real Apple device, whether it worked or not.
+description: How Windfall behaved with a real Apple device, whether it worked or not.
 body:
   - type: markdown
     attributes:
       value: |
-        Results from real devices are the only way this project is checked against Apple's own implementation, so failures are as useful as successes. [docs/bridge-hardware-setup.md](https://github.com/UvejsGj/WinDrop/blob/main/docs/bridge-hardware-setup.md) covers the setup.
+        Results from real devices are the only way this project is checked against Apple's own implementation, so failures are as useful as successes. [docs/bridge-hardware-setup.md](https://github.com/UvejsGj/Windfall/blob/main/docs/bridge-hardware-setup.md) covers the setup.
 
         **Redact before pasting logs.** This repository is public. Remove device names, MAC addresses, UUIDs, IP addresses, and file names beyond the `IMG_xxxx` pattern.
   - type: input
@@ -26,8 +26,8 @@ body:
     attributes:
       label: Direction
       options:
-        - Apple device to WinDrop
-        - WinDrop to Apple device
+        - Apple device to Windfall
+        - Windfall to Apple device
     validations:
       required: true
   - type: input

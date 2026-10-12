@@ -4,6 +4,10 @@ Running log of what we have **observed**, kept separate from what we have **read
 Anything sourced from a third party stays marked as unverified until our own capture
 confirms it — the point of this project is to not take the protocol on faith.
 
+The project was called WinDrop until 2026-10-13. The name is replaced throughout this log,
+so commands and paths in the older entries read `windfall` where they read `windrop` when
+they were run.
+
 ## Continuity BLE beacon (milestone 0)
 
 ### Hypothesis under test
@@ -74,7 +78,7 @@ was reasoned, never measured. It is now measured, with `tools/mdns_sniff.py` and
 packets on a LAN that demonstrably carries mDNS. The cause was joining the multicast
 group on `INADDR_ANY`, which picks one interface by routing and had picked a virtual
 adapter. A negative result from an uncalibrated instrument is worthless, so the test was
-re-run with a WinDrop receiver alongside as a **positive control** and the group joined
+re-run with a Windfall receiver alongside as a **positive control** and the group joined
 on the real adapter by address.
 
 With the control visible, the negative means something:
@@ -104,7 +108,7 @@ ADR-001's central claim now rests on measurement rather than on reading.
 #### 2026-09-02 — CONFIRMED: mDNS records resolve in a third-party browser
 
 `tools/mdns_browse.py` drives python-zeroconf, an independent mDNS implementation,
-against a running `windrop receive`. Full round trip, not just a parse:
+against a running `windfall receive`. Full round trip, not just a parse:
 
 ```
 instance : UVEJSLAPTOP-0cedda._airdrop._tcp.local.
@@ -132,7 +136,7 @@ not obviously wrong, but it is worth revisiting if a real device is slow to conn
 
 #### 2026-09-02 — CONFIRMED: opendrop sending to us, and two real bugs found
 
-`opendrop send` to `windrop receive`, over IPv4 between WSL2 and the Windows host.
+`opendrop send` to `windfall receive`, over IPv4 between WSL2 and the Windows host.
 64-byte file, byte-identical on arrival (MD5 `8e87b52c…` both sides). This is the
 direction that exercises our **readers**, and unlike the sending direction it did not
 work first time. It found two genuine defects.
@@ -168,7 +172,7 @@ without complaint.
 
 #### What the two directions together now cover
 
-| | WinDrop → opendrop | opendrop → WinDrop |
+| | Windfall → opendrop | opendrop → Windfall |
 |---|---|---|
 | bplist | writer | **reader** |
 | cpio | writer (newc) | **reader (odc)** |
@@ -204,7 +208,7 @@ so our chunked-zlib framing has still never been read by anything but us.
 
 #### 2026-09-02 — CONFIRMED: full interop with opendrop
 
-WinDrop sender to `opendrop receive`, over IPv6 link-local between Windows and WSL2
+Windfall sender to `opendrop receive`, over IPv6 link-local between Windows and WSL2
 Ubuntu 22.04. Two files, 69 and 6756 bytes, both arriving byte-identical (MD5 verified
 against the originals).
 
@@ -358,7 +362,7 @@ normalisation are both established, which is what the sender side needs.
 
 #### Verifying the contact-hash reading
 
-`contact-hash` (in `src/WinDrop.Tools.ContactHash`) tests whether those four values are
+`contact-hash` (in `src/Windfall.Tools.ContactHash`) tests whether those four values are
 truncated SHA-256 digests of the sender's contact identifiers. Apple's normalisation is
 unknown and consequential — `+1 (555) 010-9999` and `15550109999` hash to unrelated
 digests — so the tool sweeps the plausible variants and reports which one lands, if any.
@@ -437,7 +441,7 @@ opendrop-icon.jp2 -> FAILED: NotSupportedException No imaging component suitable
 The JPEG is the same thumbnail, re-encoded. It is the positive control: it shows the
 decoder path works, so the JP2 failure is about the format and not the harness.
 
-#### What WinDrop does about it
+#### What Windfall does about it
 
 **Receiving.** The format is identified from its signature (`PreviewImage.Sniff`).
 Only JPEG and PNG are decoded, each by its own named decoder. Nothing goes through the
@@ -539,7 +543,7 @@ after an AWDL MAC rotation.
 4. Does a non-Apple receiver appear in the iOS 26.6 share sheet? That needs a successful
    `/Discover`, so it answers 2 and 3 as well.
 
-#### 2026-09-13 — MEASURED: WinDrop's own receiver runs on Linux
+#### 2026-09-13 — MEASURED: Windfall's own receiver runs on Linux
 
 Before pointing our receiver at `awdl0`, a self-contained `linux-x64` build of the CLI was
 run in WSL2 (Ubuntu 22.04). Two parts of it had never run anywhere but Windows: TLS, where
@@ -548,7 +552,7 @@ run in WSL2 (Ubuntu 22.04). Two parts of it had never run anywhere but Windows: 
 - **Transfers:** Windows CLI to the Linux receiver, over IPv4 and over a scoped IPv6
   link-local address (`fe80::…%39`). Three files arrived byte-identical by MD5. The
   receiver identified the /Ask preview as a 7,733-byte JPEG.
-- **mDNS:** `windrop browse` inside WSL found the receiver at its scoped link-local
+- **mDNS:** `windfall browse` inside WSL found the receiver at its scoped link-local
   address (`%2`, eth0), with flags `0xA`.
 - **The interface filter.** Both mDNS and the address list skip interfaces that are not
   `OperationalStatus.Up`. Virtual links often report operstate `unknown`, and OWL's
@@ -558,9 +562,9 @@ run in WSL2 (Ubuntu 22.04). Two parts of it had never run anywhere but Windows: 
   during and after the run, so a join by some other daemon could not pass for ours:
 
   ```
-  BEFORE windrop:  eth0: -        wdtest0: -
-  DURING windrop:  eth0: joined   wdtest0: joined
-  AFTER windrop:   eth0: -        wdtest0: -
+  BEFORE windfall:  eth0: -        wdtest0: -
+  DURING windfall:  eth0: joined   wdtest0: joined
+  AFTER windfall:   eth0: -        wdtest0: -
   ```
 
   The worry is refuted: an operstate-`unknown` link is joined. A dummy interface stands in
@@ -569,9 +573,9 @@ run in WSL2 (Ubuntu 22.04). Two parts of it had never run anywhere but Windows: 
   (`mDNS on eth0/IPv6, …`). Whether `awdl0` was joined becomes a line to read, not
   something inferred from an empty share sheet.
 
-#### 2026-09-13 — OBSERVED: iOS 26.6 AirDrops to WinDrop's receiver, as far as /Upload
+#### 2026-09-13 — OBSERVED: iOS 26.6 AirDrops to Windfall's receiver, as far as /Upload
 
-Kali Live on the AX211, OWL on channel 6 with `-N`, and WinDrop's CLI receiver built from
+Kali Live on the AX211, OWL on channel 6 with `-N`, and Windfall's CLI receiver built from
 source on Kali at `1554b30`. It started with `mDNS on eth0/IPv6, eth0/IPv4, awdl0/IPv6`.
 The iPhone had AirDrop set to Everyone for 10 Minutes.
 
@@ -600,7 +604,7 @@ also works through a card without active monitor mode, though not reliably.
 `SenderModelName` is `iPhone`, and `FileType` is a proper UTI. The preview is **JPEG 2000**,
 which confirms what opendrop's source suggested. At 43–54 KB it is more than twice the
 size of opendrop's 540 px encode of a flat test image. Its dimensions are unknown, because
-nothing on Windows decodes it, which also means WinDrop's GUI can never show an iPhone's
+nothing on Windows decodes it, which also means Windfall's GUI can never show an iPhone's
 preview. It shows the file-type icon instead.
 
 **Run B, a ~60 KB photo: the upload arrived, and our extractor refused it.**
@@ -649,7 +653,7 @@ not. iOS listed us with only two bits, so none of the others gates a photo trans
    size does the transfer give out?
 4. Would advertising more flag bits change what iOS sends?
 
-#### 2026-09-13 — OBSERVED: the first complete AirDrop from an iPhone to WinDrop
+#### 2026-09-13 — OBSERVED: the first complete AirDrop from an iPhone to Windfall
 
 Same setup, with the receiver at `3bf2e92`.
 
@@ -1094,7 +1098,7 @@ early-ask carried every one of them, with no declines.
 
 **Two failed attempts and a failed two-photo share all died after `block 13 is stored`.**
 That is not the decoder. The line is logged only once the whole 128 KiB block has been read
-([DvZip.cs](../src/WinDrop.Protocol/Compression/DvZip.cs)), so block 13 arrived and the
+([DvZip.cs](../src/Windfall.Protocol/Compression/DvZip.cs)), so block 13 arrived and the
 link died later. Stored blocks were already proven by a 1.79 MB PNG with three of them. One
 inconsistency to settle next time: the successful attempt had 12 blocks, so the failed ones
 cannot have been byte-identical uploads of the same file, as the report believed.
@@ -1186,7 +1190,7 @@ DVZip blocks, 27 zlib and 23 stored, all decoded intact. The same share failed o
 changed at once, so the screen is not proven, but `owl-session.sh` now keeps it awake too.
 
 **The streaming receiver behaved as designed on a real phone.** After every checked
-failure, `/tmp/rx` had no new file and no `.windrop-incoming-…` folder. The directory's
+failure, `/tmp/rx` had no new file and no `.windfall-incoming-…` folder. The directory's
 timestamp moved at each failure, showing the folder was created and then removed. T9 is the
 decisive case: three of its four files had fully arrived when the fourth failed, and none
 was kept. After every success, every file was present at its exact byte count. That

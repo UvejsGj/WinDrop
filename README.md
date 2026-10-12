@@ -1,7 +1,10 @@
-# WinDrop
+# Windfall
 
 An AirDrop implementation for Windows, built from scratch by reverse-engineering the
 protocol. Learning project: understanding over shortcuts, no wrapping of existing tools.
+
+A windfall is an apple the wind has dropped from the tree. The project was called WinDrop
+until October 2026; the old name outgrew itself once the code ran on Linux as well.
 
 ## Branches
 
@@ -11,11 +14,11 @@ are not merged back, and each has its own README.
 | Branch | What it is |
 |---|---|
 | `main` (this one) | AirDrop for Windows: the protocol library, the desktop app and the command line. Everything above the radio is built and tested; reaching an iPhone from Windows is what remains |
-| [`linux`](https://github.com/UvejsGj/WinDrop/tree/linux) | The same code, worked on as a Linux command-line tool. Linux with OWL is the one setup that reaches an iPhone today, and every iPhone transfer recorded below ran on it. Adds a Linux build and a README that starts from Linux |
-| [`phone-page`](https://github.com/UvejsGj/WinDrop/tree/phone-page) | A separate route between an iPhone and a Windows PC, which is not AirDrop: the phone scans a code on the PC and sends files both ways in Safari, over ordinary Wi-Fi. No extra hardware and no Linux |
+| [`linux`](https://github.com/UvejsGj/Windfall/tree/linux) | The same code, worked on as a Linux command-line tool. Linux with OWL is the one setup that reaches an iPhone today, and every iPhone transfer recorded below ran on it. Adds a Linux build and a README that starts from Linux |
+| [`phone-page`](https://github.com/UvejsGj/Windfall/tree/phone-page) | A separate route between an iPhone and a Windows PC, which is not AirDrop: the phone scans a code on the PC and sends files both ways in Safari, over ordinary Wi-Fi. No extra hardware and no Linux |
 
 To receive from an iPhone today, clone `linux`:
-`git clone -b linux https://github.com/UvejsGj/WinDrop.git`. Changes to the shared protocol
+`git clone -b linux https://github.com/UvejsGj/Windfall.git`. Changes to the shared protocol
 code belong here on `main`, and the other branches take them from it.
 
 ## Status
@@ -28,7 +31,7 @@ code belong here on `main`, and the other branches take them from it.
 | 3. Self-signed TLS + minimal HTTP/1.1 | **done** |
 | 4. Discover → Ask → Upload state machine | **done** — verified against opendrop, an independent implementation |
 | 5. DVZip compression + CPIO `newc` archive | **done** — CPIO checked against bsdtar/libarchive |
-| 6. Reaching an iPhone | **working, slowly and intermittently** — real iPhones on iOS 26.6, 27.0 and 27.0.1 have AirDropped files to WinDrop, arriving intact. Over Linux + OWL, at 12–27 KB/s and roughly one transfer in three in recent sessions, on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
+| 6. Reaching an iPhone | **working, slowly and intermittently** — real iPhones on iOS 26.6, 27.0 and 27.0.1 have AirDropped files to Windfall, arriving intact. Over Linux + OWL, at 12–27 KB/s and roughly one transfer in three in recent sessions, on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
 
 279 tests, all passing.
 
@@ -51,7 +54,7 @@ not a software one.
 
 ## Where it stands with an iPhone
 
-An iPhone has sent files to WinDrop's receiver running on Linux, with
+An iPhone has sent files to Windfall's receiver running on Linux, with
 [OWL](https://github.com/seemoo-lab/owl) providing `awdl0`. Photos arrived byte-for-byte
 intact on iOS 26.6, 27.0 and 27.0.1: one image, several images in one share, and PNGs
 whose upload mixed compressed and stored DVZip blocks. The log of every session is in
@@ -59,9 +62,9 @@ whose upload mixed compressed and stored DVZip blocks. The log of every session 
 
 | | |
 |---|---|
-| iPhone → WinDrop | **works**, verified on real devices. A share arrives whole or not at all; a failed one leaves nothing behind |
+| iPhone → Windfall | **works**, verified on real devices. A share arrives whole or not at all; a failed one leaves nothing behind |
 | Reliability | **about one transfer in three** recently: 3 of 10 in session 10, none of 17 at another place in sessions 11–12, then 3 of 10 there in session 13. Every recent success finished within about 15 s, and whether small files fare better is the open question |
-| WinDrop → iPhone | **untested**. The sender is proven only against opendrop |
+| Windfall → iPhone | **untested**. The sender is proven only against opendrop |
 | Speed | **12–27 KB/s** in recent sessions on the one card tested (Intel AX211), 15–40 KB/s earlier. A 200 KB photo takes ~15 s, a 2.5 MB one ~100 s. Largest to arrive: 3.6 MB as one file, 6.4 MB as a four-photo share (267 s). ~25 MB fails |
 | Phone setting | **Everyone for 10 Minutes** only. Contacts Only requires an Apple-issued identity, which a non-Apple device cannot hold |
 | Windows alone | **cannot reach an iPhone** (see above). The radio has to be Linux: booted directly, or later a bridge |
@@ -82,10 +85,10 @@ criterion and a one-line test for any card.
 
 ```
 dotnet build
-dotnet run --project src/WinDrop.App              # the GUI
-dotnet run --project src/WinDrop.Cli -- receive
-dotnet run --project src/WinDrop.Cli -- send path\to\file.jpg
-dotnet run --project src/WinDrop.Cli -- browse
+dotnet run --project src/Windfall.App              # the GUI
+dotnet run --project src/Windfall.Cli -- receive
+dotnet run --project src/Windfall.Cli -- send path\to\file.jpg
+dotnet run --project src/Windfall.Cli -- browse
 ```
 
 `receive` takes `--dir <path>`, `--yes` (skip the consent prompt — it is the only real
@@ -98,13 +101,13 @@ is not read until they say yes, so an unapproved sender gets no more than the `/
 it already had to send. A "no" is answered the moment the upload starts, without reading
 any of it. `--no-early-ask` restores the classic order.
 
-**Who this reaches from Windows:** another WinDrop instance, opendrop, or a Mac started
+**Who this reaches from Windows:** another Windfall instance, opendrop, or a Mac started
 with `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
 
 **Reaching an iPhone** means running the receiver on Linux alongside OWL, which is how
 every iPhone transfer so far was made. On Linux, `awdl0` is an ordinary interface, so the
 CLI works there unchanged. The runbook is [bridge-hardware-setup.md](docs/bridge-hardware-setup.md),
-and the [`linux` branch](https://github.com/UvejsGj/WinDrop/tree/linux) is set up for exactly this.
+and the [`linux` branch](https://github.com/UvejsGj/Windfall/tree/linux) is set up for exactly this.
 
 ### Bridge transport
 
@@ -117,14 +120,14 @@ When the hardware exists, `--bridge <host>` routes everything through a Linux bo
 running OWL:
 
 ```powershell
-dotnet run --project src\WinDrop.Cli -- receive --bridge 192.168.1.50
-dotnet run --project src\WinDrop.Cli -- send --bridge 192.168.1.50 photo.jpg
+dotnet run --project src\Windfall.Cli -- receive --bridge 192.168.1.50
+dotnet run --project src\Windfall.Cli -- send --bridge 192.168.1.50 photo.jpg
 ```
 
 On that box:
 
 ```bash
-sudo ./tools/windrop-bridge.py --interface awdl0
+sudo ./tools/windfall-bridge.py --interface awdl0
 ```
 
 The bridge relays mDNS datagrams and pipes TCP. It parses no property lists, holds no
@@ -142,10 +145,10 @@ whether OWL holds a link long enough for large files, which on this hardware it 
 ### Building a standalone app
 
 ```powershell
-dotnet publish src\WinDrop.App -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
+dotnet publish src\Windfall.App -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
 ```
 
-Produces a single `publish\WinDrop.exe` of about half a megabyte, which needs the .NET 8
+Produces a single `publish\Windfall.exe` of about half a megabyte, which needs the .NET 8
 runtime present. Pass `--self-contained true` instead to get a ~150 MB executable that
 runs on a machine with no .NET installed.
 
@@ -158,8 +161,8 @@ The icon is generated rather than committed as an opaque binary:
 ### Milestone 0 tools
 
 ```
-dotnet run --project src/WinDrop.Tools.ContinuitySniffer -- --seconds 30
-dotnet run --project src/WinDrop.Tools.ContactHash -- --observed 1A2B,3C4D <identifier>
+dotnet run --project src/Windfall.Tools.ContinuitySniffer -- --seconds 30
+dotnet run --project src/Windfall.Tools.ContactHash -- --observed 1A2B,3C4D <identifier>
 ```
 
 The sniffer captures Apple Continuity BLE advertisements to `captures/*.jsonl`; open a
@@ -209,7 +212,7 @@ tests — the fixtures are committed.
 ## Layout
 
 ```
-src/WinDrop.Protocol/
+src/Windfall.Protocol/
   Plist/          bplist00 reader and writer
   Http/           minimal HTTP/1.1 client and server over one owned connection
   Tls/            self-signed certificates and the no-validation TLS setup
@@ -220,11 +223,11 @@ src/WinDrop.Protocol/
   AirDrop*.cs     the Discover/Ask/Upload state machine, both halves
   PeerText.cs     peer text made safe to show, and the rules for safe saved names
   PreviewImage.cs which preview bytes may reach an image decoder
-src/WinDrop.App/                    WPF desktop app, AirDrop-styled
-src/WinDrop.Cli/                    send / receive / browse
-src/WinDrop.Tools.ContinuitySniffer/  milestone 0 BLE capture
-src/WinDrop.Tools.ContactHash/        local contact-hash probe
-tools/windrop-bridge.py             the Linux-side AWDL relay daemon
+src/Windfall.App/                   WPF desktop app, AirDrop-styled
+src/Windfall.Cli/                   send / receive / browse
+src/Windfall.Tools.ContinuitySniffer/  milestone 0 BLE capture
+src/Windfall.Tools.ContactHash/        local contact-hash probe
+tools/windfall-bridge.py            the Linux-side AWDL relay daemon
 tools/owl-session.sh                brings OWL up for a field session on Kali, and logs it
 tools/retry-capture.sh              counts the phone's resent frames during a transfer
 tools/plist_oracle.py               plistlib fixtures and differential oracle

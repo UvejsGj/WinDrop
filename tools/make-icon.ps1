@@ -1,4 +1,4 @@
-# Generates src/WinDrop.App/appicon.ico.
+# Generates src/Windfall.App/appicon.ico.
 #
 # Deliberately not a copy of Apple's AirDrop mark, which is a specific set of concentric
 # arcs behind a triangle. This is a generic upward arrow on the same blue-violet gradient
@@ -131,7 +131,7 @@ foreach ($size in $sizes) {
 foreach ($size in $sizes) { $writer.Write($entries[$size]) }
 
 $writer.Flush()
-$target = Join-Path $PSScriptRoot "..\src\WinDrop.App\appicon.ico"
+$target = Join-Path $PSScriptRoot "..\src\Windfall.App\appicon.ico"
 [System.IO.File]::WriteAllBytes($target, $out.ToArray())
 $writer.Dispose(); $out.Dispose()
 
