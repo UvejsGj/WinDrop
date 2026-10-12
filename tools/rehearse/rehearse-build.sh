@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# Rehearsal 1: the OWL build step, in WSL, from the tree as it will be committed.
-#   $1  a tar of that tree (LF line ends)
+# Rehearsal 1: the OWL build step, from the tree as it will be committed.
+#   $1  a tar of that tree (LF line ends); without it, the tree this file is in, as a commit
+#       made now would hold it
+# Needs the internet and root, or sudo, for the build tools.
 set -uo pipefail
-TAR=$1
-export HOME=/root
 W=/tmp/wd-build
 rm -rf "$W" && mkdir -p "$W/tree"
-tar -C "$W/tree" -xf "$TAR"
+if [ -n "${1:-}" ]; then
+  tar -C "$W/tree" -xf "$1"
+else
+  ROOT=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
+  # Tracked and new files as they are now, so an uncommitted change is what is rehearsed.
+  git -C "$ROOT" ls-files -z --cached --others --exclude-standard | tar -C "$ROOT" --null -T - -cf - | tar -C "$W/tree" -xf -
+fi
 B=$W/tree/tools/owl-build.sh
 export SRC=$W/omdrop-owl OWL_OUT=$W/owl-patched
 
@@ -31,5 +37,4 @@ printf '#!/bin/sh\necho "owl: invalid option -- F" >&2\nexit 1\n' > "$W/old-owl"
 bash -c "$(sed -n '/^accepts_the_flags()/,/^}/p' "$B"); accepts_the_flags '$W/old-owl' && echo ACCEPTED || echo refused"
 bash -c "$(sed -n '/^accepts_the_flags()/,/^}/p' "$B"); accepts_the_flags '$OWL_OUT/owl' && echo accepted || echo REFUSED"
 
-mkdir -p /root/wd-rehearse-keep && cp "$OWL_OUT/owl" /root/wd-rehearse-keep/owl
 echo "##### done"

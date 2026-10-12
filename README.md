@@ -170,18 +170,25 @@ bash ~/WinDrop/tools/owl-counts.sh              # any time: the OWL log lines a 
 
 - **Untested on real hardware.** No session had run it when it was written (2026-10-12).
   It was rehearsed against stand-ins for `iw`, `ip` and `owl` on a machine with no Wi-Fi
-  card, which shows that the steps run in order and are undone on every way out, and
-  nothing about the radio. omdrop-owl's AX211s have other PCI IDs (`8086:51f0`,
-  `8086:51f1`) than the one tested here (`8086:7a70`). `owl-session.sh` is unchanged and
-  stays the way that is known to work.
+  card (`tools/rehearse`), which shows that the steps run in order and are undone on
+  every way out, and nothing about the radio. omdrop-owl's AX211s have other PCI IDs
+  (`8086:51f0`, `8086:51f1`) than the one tested here (`8086:7a70`). `owl-session.sh` is
+  unchanged and stays the way that is known to work.
+- **The card is the first argument**, `wlan0` if none is given, so
+  `bash tools/owl-exclusive.sh wlan1` runs it on a second card beside the built-in one.
+  Its radio and its driver are read from the interface, and printed at start and in the
+  log's first line, so a result says which card produced it. The method has only been
+  reported on Intel cards.
 - **What it does.** It stops what manages the radio and reloads the driver, as
-  `owl-session.sh` does. Then it takes the station down, adds an ad-hoc interface
-  `awdlibss0` carrying the station's address, joins it to AWDL's BSSID on channel 6 at
-  HT20, adds a monitor interface `mon0` with the same address, and runs OWL on that. Some
-  AX211s refuse an ad-hoc interface beside the station; the station itself is then
-  switched to ad-hoc. Ctrl+C undoes each step and leaves an ordinary station. If the card
-  is left in ad-hoc mode anyway, reloading the driver clears it:
-  `sudo modprobe -r iwlmvm iwlwifi`, then `sudo modprobe iwlwifi`.
+  `owl-session.sh` does, but only when that driver is `iwlwifi`: the module names are
+  Intel's, so on any other card the reload is left out, and the script says so.
+  `RELOAD=0` leaves it out on the Intel card too. Then it takes the station down, adds an
+  ad-hoc interface `awdlibss0` carrying the station's address, joins it to AWDL's BSSID
+  on channel 6 at HT20, adds a monitor interface `mon0` with the same address, and runs
+  OWL on that. Some AX211s refuse an ad-hoc interface beside the station; the station
+  itself is then switched to ad-hoc. Ctrl+C undoes each step and leaves an ordinary
+  station. If the card is left in ad-hoc mode anyway, reloading its driver clears it; on
+  the Intel card, `sudo modprobe -r iwlmvm iwlwifi`, then `sudo modprobe iwlwifi`.
 - **It needs a patched OWL, which is not WinDrop's.** The OWL that Kali packages lacks
   the options this takes. `tools/owl-build.sh` clones omdrop-owl at a pinned commit and
   builds it with omdrop-owl's own script, from the
@@ -384,6 +391,7 @@ tools/owl-build.sh                  builds the patched OWL that owl-exclusive.sh
 tools/owl-counts.sh                 counts the OWL log lines a field session records
 tools/session-receive.sh            starts the receiver the way a field session does
 tools/retry-capture.sh              counts the phone's resent frames during a transfer
+tools/rehearse/                     rehearses the OWL scripts on a machine with no Wi-Fi card, against stand-ins
 tools/plist_oracle.py               plistlib fixtures and differential oracle
 docs/                               ADRs and reverse-engineering notes
 ```

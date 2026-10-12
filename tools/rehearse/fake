@@ -81,7 +81,7 @@ case "$name" in
         make_iface mon0 monitor 02:11:22:33:44:57 ;;
       "dev "*" del")
         [ -d "$net/$2" ] || { echo "command failed: No such device (-19)" >&2; exit 237; }
-        rm -rf "$net/$2" "$FAKE_STATE/type.$2" "$FAKE_STATE/link.$2" "$FAKE_STATE/joined.$2" ;;
+        rm -rf "$net/${2:?}" "$FAKE_STATE/type.$2" "$FAKE_STATE/link.$2" "$FAKE_STATE/joined.$2" ;;
       "dev "*" set type "*)
         [ "$(cat "$FAKE_STATE/link.$2")" = down ] || { echo "command failed: Device or resource busy (-16)" >&2; exit 240; }
         if [ "$5" = ibss ] && [ "${FAKE_CONVERT:-yes}" != yes ]; then
