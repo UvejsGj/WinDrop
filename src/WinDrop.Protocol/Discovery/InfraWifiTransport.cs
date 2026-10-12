@@ -3,6 +3,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using WinDrop.Protocol.Dns;
 
 namespace WinDrop.Protocol.Discovery;
 
@@ -49,6 +50,17 @@ public sealed class InfraWifiTransport : IAirDropTransport
     /// </summary>
     internal static bool IsAwdl(string joined) => joined.StartsWith("awdl", StringComparison.Ordinal);
 
+    /// <summary>
+    /// Set to go on re-sending the announcement in bursts for as long as it is advertised,
+    /// on AWDL only. Null, the default, announces twice and then answers questions, which is
+    /// right wherever a peer shares the channel. <see cref="AnnouncementBurst"/> says when
+    /// it is not.
+    /// </summary>
+    public AnnouncementBurst? RepeatAnnouncement { get; init; }
+
+    private Task SendOnAwdlAsync(DnsMessage message, CancellationToken ct) =>
+        _mdns.SendOnAsync(message, IsAwdl, ct);
+
     private void EnsureStarted()
     {
         lock (_gate)
@@ -80,19 +92,51 @@ public sealed class InfraWifiTransport : IAirDropTransport
             await _mdns.SendAsync(AirDropRecords.BuildAnnouncement(record, _hostName, LocalAddresses()), ct);
         }
 
-        return new Advertisement(this, record);
+        if (RepeatAnnouncement is not { } burst) return new Advertisement(this, record);
+
+        // Only on AWDL: the bursts are for a radio the phone visits, and an ordinary
+        // network heard the two announcements above.
+        var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        Task repeating = burst.RepeatAsync(
+            () => AirDropRecords.BuildAnnouncement(record, _hostName, LocalAddresses()),
+            SendOnAwdlAsync,
+            stop.Token);
+
+        return new Advertisement(this, record, stop, repeating);
     }
 
-    private sealed class Advertisement(InfraWifiTransport owner, AirDropServiceRecord record) : IAsyncDisposable
+    private sealed class Advertisement(
+        InfraWifiTransport owner,
+        AirDropServiceRecord record,
+        CancellationTokenSource? stopRepeating = null,
+        Task? repeating = null) : IAsyncDisposable
     {
         public async ValueTask DisposeAsync()
         {
             // Stop answering first, so no query can be answered after the goodbye.
             owner._advertised = null;
 
-            await AirDropRecords.SendGoodbyeAsync(
-                AirDropRecords.BuildGoodbye(record, owner._hostName),
-                owner._mdns.SendAsync);
+            // And stop repeating, and wait for the burst in flight to end, for the same reason.
+            if (stopRepeating is not null && repeating is not null)
+            {
+                await stopRepeating.CancelAsync();
+                await repeating;
+                stopRepeating.Dispose();
+            }
+
+            DnsMessage goodbye = AirDropRecords.BuildGoodbye(record, owner._hostName);
+
+            await AirDropRecords.SendGoodbyeAsync(goodbye, owner._mdns.SendAsync);
+
+            // Where the announcement needed a burst to be heard, so does its withdrawal.
+            // Without it the phone goes on listing a receiver that has stopped, beside the
+            // next one to start, until the records expire two minutes later.
+            if (owner.RepeatAnnouncement is { } burst)
+            {
+                await AirDropRecords.SendGoodbyeAsync(
+                    goodbye, owner.SendOnAwdlAsync, copies: burst.Copies, spacing: burst.Spacing);
+            }
         }
     }
 

@@ -146,6 +146,16 @@ public class PeerTextTests
         Assert.DoesNotContain("owl-session", elsewhere);
     }
 
+    [Fact]
+    public void The_repeat_note_names_the_option_and_its_numbers()
+    {
+        // A session's record has to show how the receiver announced. The decimal point is
+        // fixed, whatever the machine's language.
+        Assert.Equal(
+            "Repeating the announcement on AWDL: bursts of 64 copies 16.4 ms apart, 3 s between bursts (--repeat).",
+            ConsoleText.RepeatNote(WinDrop.Protocol.Discovery.AnnouncementBurst.FixedRadio));
+    }
+
     [Theory]
     [InlineData("awdl0/IPv6", true)]
     [InlineData("awdl1/IPv6", true)]

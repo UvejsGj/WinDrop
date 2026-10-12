@@ -37,7 +37,7 @@ Changes to the shared protocol code belong on `main`, and this branch takes them
 | 6. Reaching an iPhone | **working, slowly and intermittently** — real iPhones on iOS 26.6, 27.0 and 27.0.1 have AirDropped files to WinDrop, arriving intact. Over Linux + OWL, at 12–27 KB/s and roughly one transfer in three in recent sessions, on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
 | 7. Reaching an iPhone from Windows | **pending** — blocked below WinDrop, at the radio. See [Windows, pending](#windows-pending) |
 
-284 tests, all passing, on Linux and on Windows.
+292 tests, all passing, on Linux and on Windows.
 
 ## The one thing to understand first
 
@@ -87,6 +87,13 @@ acknowledge. The record of what was tried and why each failed is in the notes.
 The fix is an adapter whose Linux driver supports active monitor mode, typically MediaTek
 on the `mt76` driver. [bridge-hardware-setup.md](docs/bridge-hardware-setup.md) has the
 criterion and a one-line test for any card.
+
+There may be a second fix that needs no new hardware.
+[omdrop-owl](https://github.com/t4t5/omdrop-owl) reports Intel cards, AX211s among them,
+working in both directions once an ad-hoc interface on AWDL's own BSSID stands beside the
+monitor interface, which gives the firmware an address to acknowledge for.
+`tools/owl-exclusive.sh` brings this card up that way. **It has not been run on real
+hardware yet**: see [another way to drive an Intel card](#another-way-to-drive-an-intel-card-untested).
 
 ## Running it on Linux
 
@@ -147,6 +154,48 @@ bash ~/WinDrop/tools/session-receive.sh --yes   # terminal 2; leave out --yes to
 The setup script installs OWL with `apt`, which works on Kali. Elsewhere, install OWL first
 and the script skips that step. It can be run again: whatever is already there is skipped.
 
+### Another way to drive an Intel card, untested
+
+`tools/owl-exclusive.sh` is a sibling of `owl-session.sh` that brings the radio up
+differently, to get an Intel card to acknowledge the phone's frames. The method is the
+"exclusive mode" of [omdrop-owl](https://github.com/t4t5/omdrop-owl), which reports an
+AX201 and two AX211s working with it, and a 2.4 MB photo in 10 to 17 s on the AX201.
+
+```bash
+bash WinDrop/tools/owl-build.sh                 # while still online: the patched OWL, into ~/owl-patched
+bash ~/WinDrop/tools/owl-exclusive.sh           # terminal 1, in place of owl-session.sh
+bash ~/WinDrop/tools/session-receive.sh --yes   # terminal 2, as before
+bash ~/WinDrop/tools/owl-counts.sh              # any time: the OWL log lines a session records, counted
+```
+
+- **Untested on real hardware.** No session had run it when it was written (2026-10-12).
+  It was rehearsed against stand-ins for `iw`, `ip` and `owl` on a machine with no Wi-Fi
+  card, which shows that the steps run in order and are undone on every way out, and
+  nothing about the radio. omdrop-owl's AX211s have other PCI IDs (`8086:51f0`,
+  `8086:51f1`) than the one tested here (`8086:7a70`). `owl-session.sh` is unchanged and
+  stays the way that is known to work.
+- **What it does.** It stops what manages the radio and reloads the driver, as
+  `owl-session.sh` does. Then it takes the station down, adds an ad-hoc interface
+  `awdlibss0` carrying the station's address, joins it to AWDL's BSSID on channel 6 at
+  HT20, adds a monitor interface `mon0` with the same address, and runs OWL on that. Some
+  AX211s refuse an ad-hoc interface beside the station; the station itself is then
+  switched to ad-hoc. Ctrl+C undoes each step and leaves an ordinary station. If the card
+  is left in ad-hoc mode anyway, reloading the driver clears it:
+  `sudo modprobe -r iwlmvm iwlwifi`, then `sudo modprobe iwlwifi`.
+- **It needs a patched OWL, which is not WinDrop's.** The OWL that Kali packages lacks
+  the options this takes. `tools/owl-build.sh` clones omdrop-owl at a pinned commit and
+  builds it with omdrop-owl's own script, from the
+  [jedbillyb/owl](https://github.com/jedbillyb/owl) fork plus omdrop-owl's patches, into
+  `~/owl-patched/owl`. Both are GPL-3.0, WinDrop is MIT, and none of their code is in
+  this repository: the result is a separate program, built when a session needs it. The
+  packaged `owl` is not replaced.
+- **The receiver announces differently.** A radio held on one channel is where the phone
+  is for a slot or two in sixteen, so an announcement sent once mostly misses it.
+  `receive --repeat` goes on sending it, on AWDL only, in bursts of 64 copies 16.4 ms
+  apart with 3 s between bursts, which are omdrop-owl's numbers, and withdraws it the same
+  way when it stops. `session-receive.sh` adds `--repeat` by itself when
+  `owl-exclusive.sh` is up, and `REPEAT=0` leaves it out.
+
 ### Building and testing
 
 ```bash
@@ -166,7 +215,9 @@ dotnet ~/wd/windrop.dll browse
 ```
 
 `receive` takes `--dir <path>`, `--yes` (skip the consent prompt — it is the only real
-security boundary in the protocol, so only for scripted testing) and `--no-early-ask`.
+security boundary in the protocol, so only for scripted testing), `--no-early-ask`, and
+`--repeat` (announce in bursts, for a radio held on one channel;
+[untested](#another-way-to-drive-an-intel-card-untested), and off unless asked for).
 
 **Early-ask is on by default.** Over AWDL the `/Ask` request is slow, mostly the preview
 image iOS attaches, and iOS gives up on it before a normal answer arrives, reporting a
@@ -328,6 +379,9 @@ WinDrop.Linux.slnf                  the solution without the Windows-only projec
 tools/windrop-bridge.py             the Linux-side AWDL relay daemon
 tools/session-setup.sh              a field session's installs, build and Wi-Fi scan, in one command
 tools/owl-session.sh                brings OWL up for a field session on Kali, and logs it
+tools/owl-exclusive.sh              the same with an ad-hoc interface beside the monitor one (untested on real hardware)
+tools/owl-build.sh                  builds the patched OWL that owl-exclusive.sh needs, beside the packaged one
+tools/owl-counts.sh                 counts the OWL log lines a field session records
 tools/session-receive.sh            starts the receiver the way a field session does
 tools/retry-capture.sh              counts the phone's resent frames during a transfer
 tools/plist_oracle.py               plistlib fixtures and differential oracle

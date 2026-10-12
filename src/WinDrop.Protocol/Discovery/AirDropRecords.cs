@@ -45,15 +45,21 @@ public static class AirDropRecords
     /// since this runs while the program is stopping, often after its own token has been
     /// cancelled. A goodbye that cannot be sent costs only what was there before it existed:
     /// the entry lingers until it expires.
+    ///
+    /// <paramref name="copies"/> and <paramref name="spacing"/> are for a radio held on one
+    /// channel, where two copies mostly miss the phone just as two announcements do. See
+    /// <see cref="AnnouncementBurst"/>.
     /// </summary>
     internal static async Task SendGoodbyeAsync(
         DnsMessage goodbye,
         Func<DnsMessage, CancellationToken, Task> send,
-        TimeSpan? timeoutPerSend = null)
+        TimeSpan? timeoutPerSend = null,
+        int copies = 2,
+        TimeSpan? spacing = null)
     {
-        for (int attempt = 0; attempt < 2; attempt++)
+        for (int attempt = 0; attempt < copies; attempt++)
         {
-            if (attempt > 0) await Task.Delay(TimeSpan.FromMilliseconds(250));
+            if (attempt > 0) await Task.Delay(spacing ?? TimeSpan.FromMilliseconds(250));
 
             using var timeout = new CancellationTokenSource(timeoutPerSend ?? TimeSpan.FromSeconds(2));
 

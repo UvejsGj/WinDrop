@@ -157,12 +157,21 @@ public sealed class MulticastDns : IAsyncDisposable
     }
 
     /// <summary>Sends on every joined interface, since we cannot know where a peer is.</summary>
-    public async Task SendAsync(DnsMessage message, CancellationToken ct = default)
+    public Task SendAsync(DnsMessage message, CancellationToken ct = default) =>
+        SendOnAsync(message, _ => true, ct);
+
+    /// <summary>
+    /// Sends on the joins <paramref name="where"/> accepts, named as in
+    /// <see cref="InterfaceNames"/>. For traffic that belongs on one kind of link only.
+    /// </summary>
+    public async Task SendOnAsync(DnsMessage message, Func<string, bool> where, CancellationToken ct = default)
     {
         byte[] payload = message.ToBytes();
 
         for (int i = 0; i < _sockets.Count; i++)
         {
+            if (!where(_interfaceNames[i])) continue;
+
             Socket socket = _sockets[i];
 
             var destination = socket.AddressFamily == AddressFamily.InterNetworkV6

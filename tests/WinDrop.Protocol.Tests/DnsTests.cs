@@ -391,3 +391,133 @@ public class GoodbyeTests
         Assert.True(timer.Elapsed < TimeSpan.FromSeconds(5), $"Took {timer.Elapsed}.");
     }
 }
+
+/// <summary>
+/// The announcement repeated in bursts, for a radio held on one channel (--repeat). A phone
+/// gives that channel a slot or two in sixteen, so one announcement mostly misses it.
+/// </summary>
+public class AnnouncementBurstTests
+{
+    private static readonly AirDropServiceRecord Record =
+        new("kali-69c4c4", AirDropServiceRecord.DefaultPort, AirDropReceiverFlags.SupportsDvZip);
+
+    private static DnsMessage Announcement() =>
+        AirDropRecords.BuildAnnouncement(Record, "kali.local", [IPAddress.Parse("fe80::1")]);
+
+    [Fact]
+    public void The_fixed_radio_burst_puts_a_copy_in_every_window_of_one_period()
+    {
+        AnnouncementBurst burst = AnnouncementBurst.FixedRadio;
+
+        // An AWDL period is 16 slots of 64 TU, and a TU is 1.024 ms. A copy every 16 TU for
+        // exactly that long leaves four in whichever slot the phone spends on our channel.
+        TimeSpan period = TimeSpan.FromMilliseconds(16 * 64 * 1.024);
+
+        Assert.Equal(period, burst.Copies * burst.Spacing);
+        Assert.Equal(4, TimeSpan.FromMilliseconds(64 * 1.024) / burst.Spacing, precision: 6);
+        Assert.True(burst.Pause > period, "A burst must end before the next begins.");
+    }
+
+    [Fact]
+    public async Task Each_burst_sends_every_copy_spaced_apart_and_then_pauses()
+    {
+        var burst = new AnnouncementBurst(Copies: 4, TimeSpan.FromMilliseconds(16), TimeSpan.FromSeconds(3));
+        var events = new List<string>();
+        using var stop = new CancellationTokenSource();
+
+        await burst.RepeatAsync(
+            Announcement,
+            (_, _) => { events.Add("send"); return Task.CompletedTask; },
+            stop.Token,
+            delay: (wait, ct) =>
+            {
+                events.Add(wait == burst.Pause ? "pause" : "gap");
+
+                // Two whole bursts, then stop during the pause that follows the second.
+                if (events.Count(e => e == "pause") == 2) stop.Cancel();
+                return ct.IsCancellationRequested ? Task.FromCanceled(ct) : Task.CompletedTask;
+            });
+
+        string[] oneBurst = ["send", "gap", "send", "gap", "send", "gap", "send", "pause"];
+        Assert.Equal([.. oneBurst, .. oneBurst], events);
+    }
+
+    [Fact]
+    public async Task The_announcement_is_built_again_for_each_burst()
+    {
+        // Its addresses are read when it is built, and an interface can appear later.
+        var burst = new AnnouncementBurst(Copies: 3, TimeSpan.Zero, TimeSpan.Zero);
+        var built = new List<DnsMessage>();
+        var sent = new List<DnsMessage>();
+        using var stop = new CancellationTokenSource();
+
+        await burst.RepeatAsync(
+            () =>
+            {
+                if (built.Count == 2) stop.Cancel();
+                built.Add(Announcement());
+                return built[^1];
+            },
+            (message, ct) =>
+            {
+                ct.ThrowIfCancellationRequested();
+                sent.Add(message);
+                return Task.CompletedTask;
+            },
+            stop.Token,
+            delay: (_, _) => Task.CompletedTask);
+
+        Assert.Equal(3, built.Count);
+        Assert.Equal([built[0], built[0], built[0], built[1], built[1], built[1]], sent);
+    }
+
+    [Theory]
+    [InlineData("cancelled")]
+    [InlineData("disposed")]
+    public async Task Repeating_ends_quietly_when_the_receiver_stops(string how)
+    {
+        // It runs beside the receiver until shutdown, when its token is cancelled and the
+        // sockets under it are closed, in either order. Neither may surface as a failure.
+        using var stop = new CancellationTokenSource();
+        int sends = 0;
+
+        await AnnouncementBurst.FixedRadio.RepeatAsync(
+            Announcement,
+            (_, ct) =>
+            {
+                if (++sends < 5) return Task.CompletedTask;
+                if (how == "disposed") throw new ObjectDisposedException("socket");
+
+                stop.Cancel();
+                return Task.FromCanceled(ct);
+            },
+            stop.Token,
+            delay: (_, _) => Task.CompletedTask);
+
+        Assert.Equal(5, sends);
+    }
+
+    [Fact]
+    public async Task A_goodbye_can_be_sent_as_a_burst_too()
+    {
+        // Where an announcement needs a burst to be heard, two goodbyes are as easily missed.
+        var sent = new List<DnsMessage>();
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+
+        await AirDropRecords.SendGoodbyeAsync(
+            AirDropRecords.BuildGoodbye(Record, "kali.local"),
+            (message, _) => { sent.Add(message); return Task.CompletedTask; },
+            copies: 8,
+            spacing: TimeSpan.FromMilliseconds(1));
+
+        Assert.Equal(8, sent.Count);
+        Assert.All(sent, message => Assert.All(message.Answers, r => Assert.Equal(0u, r.Ttl)));
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(2), $"Took {timer.Elapsed}.");
+    }
+
+    [Fact]
+    public void A_transport_does_not_repeat_unless_asked()
+    {
+        Assert.Null(new InfraWifiTransport().RepeatAnnouncement);
+    }
+}

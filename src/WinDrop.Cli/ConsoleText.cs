@@ -1,4 +1,6 @@
+using System.Globalization;
 using WinDrop.Protocol;
+using WinDrop.Protocol.Discovery;
 
 namespace WinDrop.Cli;
 
@@ -75,4 +77,12 @@ internal static class ConsoleText
             : onLinux
                 ? "No awdl0 interface, so no iPhone can be reached. Start OWL first (tools/owl-session.sh), then run this again."
                 : "No awdl0 interface, so no iPhone can be reached. Only Linux with OWL provides one; see the README.";
+
+    /// <summary>
+    /// Said at start when --repeat is on, with the numbers, so a session's record shows which
+    /// way the receiver announced without anyone having to remember how it was started.
+    /// </summary>
+    public static string RepeatNote(AnnouncementBurst burst) =>
+        string.Create(CultureInfo.InvariantCulture,
+            $"Repeating the announcement on AWDL: bursts of {burst.Copies} copies {burst.Spacing.TotalMilliseconds:0.#} ms apart, {burst.Pause.TotalSeconds:0.#} s between bursts (--repeat).");
 }

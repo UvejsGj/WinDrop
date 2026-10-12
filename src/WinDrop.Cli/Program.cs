@@ -59,6 +59,7 @@ static int PrintUsage()
         WinDrop - an AirDrop implementation, written from scratch
 
           windrop receive [--dir <path>] [--port <n>] [--flags <hex>] [--yes] [--no-early-ask]
+                          [--repeat]
           windrop send [--to <name>| --peer <host>] [--icon <image>] <file> [file...]
           windrop browse                   list nearby peers
 
@@ -67,6 +68,8 @@ static int PrintUsage()
 
         An iPhone only looks for AirDrop on awdl0. On Linux, start OWL first
         (tools/owl-session.sh) and these same commands reach the phone over it.
+        --repeat goes on announcing in bursts, for a radio held on one channel
+        (tools/owl-exclusive.sh).
         Windows cannot join that link layer. From there, add --bridge <host> to any
         command to use a Linux box running OWL as the radio.
         See docs/adr-001-transport-selection.md.
@@ -139,6 +142,9 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
     {
         Console.WriteLine($"mDNS on {string.Join(", ", infra.ListeningOn)}");
         Console.WriteLine(ConsoleText.RadioNote(infra.CanReachAppleDevices, OperatingSystem.IsLinux()));
+
+        if (infra.RepeatAnnouncement is { } burst)
+            Console.WriteLine(ConsoleText.RepeatNote(burst));
     }
 
     Console.WriteLine($"Saving to {directory}");
@@ -437,7 +443,15 @@ static IAirDropTransport CreateTransport(string[] args)
 {
     string? bridge = ArgumentValue(args, "--bridge");
 
-    if (bridge is null) return new InfraWifiTransport();
+    // --repeat is for a radio that cannot follow the phone from channel to channel, which
+    // is how tools/owl-exclusive.sh runs an Intel card. Only a receiver announces, so the
+    // other commands carry it without effect.
+    bool repeat = args.Contains("--repeat", StringComparer.OrdinalIgnoreCase);
+
+    if (bridge is null)
+        return new InfraWifiTransport { RepeatAnnouncement = repeat ? AnnouncementBurst.FixedRadio : null };
+
+    if (repeat) Console.WriteLine("--repeat does nothing with --bridge: the bridge sends the announcements.");
 
     Console.WriteLine($"Using bridge at {bridge}");
     return new BridgeTransport(bridge);
