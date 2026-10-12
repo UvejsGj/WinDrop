@@ -232,6 +232,7 @@ tools/owl-session.sh                brings OWL up for a field session on Kali, a
 tools/retry-capture.sh              counts the phone's resent frames during a transfer
 tools/plist_oracle.py               plistlib fixtures and differential oracle
 docs/                               ADRs and reverse-engineering notes
+site/                               the project website, one self-contained page
 ```
 
 ## On testing

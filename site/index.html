@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Windfall</title>
+<meta name="description" content="An AirDrop implementation for Windows and Linux, built from scratch by reverse-engineering the protocol and tested against real iPhones.">
+<meta property="og:title" content="Windfall">
+<meta property="og:description" content="AirDrop for Windows and Linux, rebuilt from the bytes up.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34'%3E%3Cpath d='M17 10C12 6 4 9 4 18c0 8 6 14 13 12 7 2 13-4 13-12 0-9-8-12-13-8Z' fill='%23BF2E2A'/%3E%3Cpath d='M17 10c0-3 1-5 3-7' fill='none' stroke='%2318211B' stroke-width='1.8' stroke-linecap='round'/%3E%3Cpath d='M20 5c3-3 7-3 9-1-2 3-6 3-9 1Z' fill='%233A7738'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap">
+<style>
+/* Layout: a field notebook. Section labels sit in a narrow left margin and the content
+   hangs to their right. The hero carries one drop line that a file falls down. */
+:root {
+  --flesh: #F3F5EA;   /* page: the pale green-white of a cut apple */
+  --pith: #FAFBF5;    /* raised surface */
+  --seed: #18211B;    /* ink */
+  --stem: #59645B;    /* quiet text */
+  --rule: #D3D9C6;    /* hairlines */
+  --skin: #BF2E2A;    /* the one accent: apple red */
+  --leaf: #37722F;    /* works */
+  --russet: #8C5C1A;  /* slow, partial */
+  --tint-skin: #F4DAD3;
+  --tint-leaf: #DCE9CF;
+  --tint-russet: #F0E3C6;
+  --tint-stem: #E3E7D8;
+
+  --display: "Bricolage Grotesque", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --body: "Instrument Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --apple: 34px;
+  --gutter: clamp(16px, 4vw, 40px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --flesh: #0F1511; --pith: #171F19; --seed: #E8EDDD; --stem: #9AA79A; --rule: #2B362D;
+    --skin: #EF6A5F; --leaf: #8CC57C; --russet: #D9A85C;
+    --tint-skin: #3B1F1C; --tint-leaf: #1D3220; --tint-russet: #352A10; --tint-stem: #212A23;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --flesh: #0F1511; --pith: #171F19; --seed: #E8EDDD; --stem: #9AA79A; --rule: #2B362D;
+  --skin: #EF6A5F; --leaf: #8CC57C; --russet: #D9A85C;
+  --tint-skin: #3B1F1C; --tint-leaf: #1D3220; --tint-russet: #352A10; --tint-stem: #212A23;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--flesh);
+  color: var(--seed);
+  font: 400 17px/1.6 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration-color: var(--skin); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+a:hover { color: var(--skin); }
+:focus-visible { outline: 2px solid var(--skin); outline-offset: 3px; border-radius: 2px; }
+p { margin: 0; max-width: 64ch; }
+h1, h2, h3 { margin: 0; font-family: var(--display); text-wrap: balance; }
+code, pre, .mono { font-family: var(--mono); }
+code { font-size: .88em; background: var(--tint-stem); padding: .1em .35em; border-radius: 3px; }
+
+.page { max-width: 1120px; margin-inline: auto; padding-inline: var(--gutter); }
+
+/* ---------- header ---------- */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 20px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font: 700 20px/1 var(--display); letter-spacing: -.02em; text-decoration: none; }
+.brand svg { width: 26px; height: 26px; }
+.top nav { display: flex; flex-wrap: wrap; gap: 4px 22px; font-size: 15px; }
+.top nav a { text-decoration: none; color: var(--stem); }
+.top nav a:hover, .top nav a.gh { color: var(--seed); }
+.top nav a.gh { font-weight: 600; text-decoration: underline; text-decoration-color: var(--skin); }
+@media (max-width: 700px) { .top nav a:not(.gh) { display: none; } }
+
+/* ---------- hero ---------- */
+.hero { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, .7fr); gap: 48px 64px; align-items: start; padding-block: clamp(28px, 6vw, 72px) clamp(48px, 7vw, 88px); }
+.defn { font: 400 14px/1.5 var(--mono); color: var(--stem); display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.defn b { font-weight: 500; color: var(--seed); }
+.hero h1 { font-weight: 800; font-stretch: 88%; font-size: clamp(4rem, 14vw, 10rem); line-height: .86; letter-spacing: -.03em; margin: 18px 0 10px -.03em; }
+.hero h1 span { color: var(--skin); }
+.meaning { font: italic 400 clamp(1.15rem, 2.2vw, 1.4rem)/1.4 var(--body); color: var(--stem); }
+.thesis { font: 600 clamp(1.6rem, 3.4vw, 2.35rem)/1.12 var(--display); font-stretch: 92%; letter-spacing: -.02em; margin-top: 34px; max-width: 22ch; text-wrap: balance; }
+.lede { margin-top: 18px; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border: 2px solid var(--seed); border-radius: 999px; font: 600 16px/1 var(--body); text-decoration: none; }
+.btn.solid { background: var(--seed); color: var(--flesh); }
+.btn.solid:hover { background: var(--skin); border-color: var(--skin); color: var(--flesh); }
+.btn:hover { border-color: var(--skin); }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 26px 0 0; padding: 0; list-style: none; font: 400 13.5px/1.5 var(--mono); color: var(--stem); }
+
+/* the drop line */
+.drop-wrap { position: relative; padding-top: 46px; }
+.drop-cap { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--stem); position: absolute; top: 4px; left: 150px; white-space: nowrap; }
+.twig { position: absolute; top: 0; left: -8px; width: 150px; height: 46px; }
+.drop { list-style: none; margin: 0; padding: 0 0 0 52px; position: relative; display: grid; gap: 20px; }
+.drop::before { content: ""; position: absolute; left: 16px; top: 0; bottom: calc(var(--apple) / 2); border-left: 2px dashed var(--rule); }
+.drop li { position: relative; display: grid; gap: 1px; animation: lit .35s ease-out backwards; animation-delay: calc(.4s + var(--t, 0s)); }
+.drop li::before { content: ""; position: absolute; left: -42px; top: .42em; width: 14px; height: 14px; border-radius: 50%; background: var(--flesh); border: 2px solid var(--seed); }
+.drop .st { font: 500 15px/1.4 var(--mono); }
+.drop .sd { font-size: 14.5px; line-height: 1.4; color: var(--stem); }
+.drop li.land { min-height: var(--apple); align-content: center; }
+.drop li.land::before { display: none; }
+.drop li.land .st { color: var(--skin); }
+.drop .apple { position: absolute; display: block; left: 0; top: calc(100% - var(--apple)); width: var(--apple); height: var(--apple); animation: fall 2.4s cubic-bezier(.55, .085, .68, .53) .4s backwards, settle .45s ease-out 2.8s; }
+.drop .apple::before { display: none; }
+.drop .apple svg { display: block; width: 100%; height: 100%; }
+@keyframes fall { from { top: -8px; } }
+@keyframes settle { 0% { transform: translateY(0) rotate(0); } 40% { transform: translateY(-9px) rotate(-8deg); } 100% { transform: translateY(0) rotate(0); } }
+@keyframes lit { from { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .drop .apple, .drop li { animation: none; } }
+
+/* ---------- sections ---------- */
+.sec { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 20px 56px; padding-block: clamp(48px, 7vw, 84px); border-top: 1px solid var(--rule); }
+.sec > header { display: grid; gap: 8px; align-content: start; }
+.label { font: 500 12px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--skin); }
+.note { font-size: 14px; line-height: 1.5; color: var(--stem); }
+.body { display: grid; gap: 22px; min-width: 0; }
+.sec h2 { font-weight: 700; font-stretch: 90%; font-size: clamp(1.8rem, 4vw, 2.7rem); line-height: 1.05; letter-spacing: -.03em; max-width: 18ch; }
+.sec h3 { font-weight: 700; font-size: 1.3rem; letter-spacing: -.015em; margin-top: 14px; }
+@media (max-width: 860px) {
+  .hero, .sec { grid-template-columns: minmax(0, 1fr); }
+  .drop-wrap { max-width: 420px; }
+}
+
+/* figures */
+.figs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px 28px; margin: 6px 0 4px; padding: 0; }
+.figs div { display: grid; gap: 6px; align-content: start; border-top: 3px solid var(--seed); padding-top: 12px; }
+.figs dt { font: 700 clamp(1.7rem, 3.6vw, 2.5rem)/1 var(--display); font-stretch: 85%; letter-spacing: -.03em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.figs dd { margin: 0; font-size: 14px; line-height: 1.4; color: var(--stem); }
+@media (max-width: 620px) { .figs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* rows: a label in the margin, its state and detail beside it */
+.rows { display: grid; margin: 0; padding: 0; list-style: none; border-bottom: 1px solid var(--rule); }
+.rows li { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 8px 28px; padding-block: 16px; border-top: 1px solid var(--rule); align-items: start; }
+.rows .k { font-weight: 600; grid-row: 1 / span 2; }
+.rows .chip, .rows .d { grid-column: 2; }
+.rows .d { font-size: 15.5px; line-height: 1.5; color: var(--stem); min-width: 0; }
+.rows .d b { color: var(--seed); font-weight: 600; }
+.rows .cap { display: none; font: 500 11px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--stem); }
+.rows.stack li { grid-template-columns: 160px minmax(0, 1fr) minmax(0, 1fr); }
+.rows.stack .k { grid-row: auto; }
+.rows.stack .d { grid-column: auto; }
+.rows li.head { padding-block: 0 10px; border-top: 0; font: 500 11px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--stem); }
+@media (max-width: 1000px) {
+  .rows.stack li { grid-template-columns: 160px minmax(0, 1fr); }
+  .rows.stack .k { grid-row: 1 / span 2; }
+  .rows.stack .d { grid-column: 2; }
+  .rows.stack li.head { display: none; }
+  .rows.stack .cap { display: block; margin-bottom: 2px; }
+}
+@media (max-width: 620px) {
+  .rows li, .rows.stack li { grid-template-columns: minmax(0, 1fr); }
+  .rows .k, .rows.stack .k { grid-row: auto; }
+  .rows .chip, .rows .d, .rows.stack .d { grid-column: 1; }
+}
+.chip { display: inline-flex; align-items: center; gap: 8px; justify-self: start; padding: 4px 11px 4px 9px; border-radius: 999px; font: 500 13px/1.3 var(--mono); background: var(--tint-stem); color: var(--seed); }
+.chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.chip.ok { background: var(--tint-leaf); color: var(--leaf); }
+.chip.slow { background: var(--tint-russet); color: var(--russet); }
+.chip.open::before { background: none; border: 2px solid currentColor; }
+.chip.no { background: var(--seed); color: var(--flesh); }
+
+/* the beacon */
+.bytes-wrap { overflow-x: auto; }
+.bytes { display: grid; grid-template-columns: repeat(18, minmax(26px, 1fr)); gap: 3px; min-width: 520px; font: 500 13px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.bytes span { display: grid; gap: 7px; justify-items: center; padding: 7px 0 10px; border-radius: 4px; background: var(--tint-stem); }
+.bytes i { font-style: normal; font-weight: 400; font-size: 10.5px; color: var(--stem); }
+.bytes .pre { background: var(--tint-russet); }
+.bytes .ver { background: var(--tint-leaf); }
+.bytes .hsh { background: var(--tint-skin); }
+.key { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 28px; margin: 0; padding: 0; list-style: none; font-size: 14.5px; line-height: 1.45; color: var(--stem); }
+.key li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 10px; }
+.key li::before { content: ""; width: 14px; height: 14px; border-radius: 3px; margin-top: .22em; background: var(--tint-stem); }
+.key .pre::before { background: var(--tint-russet); }
+.key .ver::before { background: var(--tint-leaf); }
+.key .hsh::before { background: var(--tint-skin); }
+.key b { color: var(--seed); font-weight: 600; }
+@media (max-width: 620px) { .key { grid-template-columns: minmax(0, 1fr); } }
+.verdict { font: 600 clamp(1.15rem, 2.2vw, 1.4rem)/1.3 var(--display); letter-spacing: -.01em; max-width: 34ch; text-wrap: balance; }
+
+/* resends */
+.frames { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; max-width: 520px; }
+.frames span { display: grid; place-items: center; height: 46px; border-radius: 4px; font: 500 12px/1 var(--mono); border: 2px solid var(--skin); color: var(--skin); background: repeating-linear-gradient(135deg, var(--tint-skin) 0 6px, transparent 6px 12px); }
+.frames .first { background: var(--seed); border-color: var(--seed); color: var(--flesh); }
+.small { font-size: 14.5px; line-height: 1.5; color: var(--stem); }
+
+/* routes */
+.routes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.route { display: grid; grid-template-rows: auto auto 1fr auto; gap: 10px; padding: 22px; background: var(--pith); border: 1px solid var(--rule); border-radius: 6px; min-width: 0; }
+.route .br { font: 500 13px/1 var(--mono); color: var(--skin); }
+.route h3 { margin: 0; font-size: 1.25rem; line-height: 1.15; }
+.route p { font-size: 15px; line-height: 1.5; color: var(--stem); }
+.route a { font-weight: 600; font-size: 15px; }
+@media (max-width: 860px) { .routes { grid-template-columns: minmax(0, 1fr); } }
+
+/* code */
+pre { margin: 0; padding: 20px 22px; background: var(--pith); border: 1px solid var(--rule); border-radius: 6px; overflow-x: auto; font-size: 14px; line-height: 1.75; }
+pre code { background: none; padding: 0; border-radius: 0; font-size: inherit; }
+pre .c { color: var(--stem); }
+
+/* log */
+.log { display: grid; margin: 0; padding: 0; list-style: none; border-bottom: 1px solid var(--rule); }
+.log li { display: grid; grid-template-columns: 104px 118px minmax(0, 1fr); gap: 6px 20px; padding-block: 13px; border-top: 1px solid var(--rule); align-items: baseline; }
+.log time { font: 400 13.5px/1.5 var(--mono); color: var(--stem); font-variant-numeric: tabular-nums; }
+.log .v { justify-self: start; font: 500 11.5px/1 var(--mono); letter-spacing: .08em; padding: 5px 8px; border-radius: 3px; background: var(--tint-stem); }
+.log .v.yes { background: var(--tint-leaf); color: var(--leaf); }
+.log .v.nope { background: var(--tint-skin); color: var(--skin); }
+.log span:last-child { font-size: 15.5px; line-height: 1.45; min-width: 0; }
+@media (max-width: 620px) { .log li { grid-template-columns: auto minmax(0, 1fr); } .log span:last-child { grid-column: 1 / -1; } }
+
+/* footer */
+footer { border-top: 1px solid var(--rule); padding-block: 36px 56px; display: grid; gap: 14px; font-size: 14px; line-height: 1.55; color: var(--stem); }
+footer nav { display: flex; flex-wrap: wrap; gap: 6px 22px; color: var(--seed); font-size: 15px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top">
+    <a class="brand" href="#top" aria-label="Windfall">
+      <svg viewBox="0 0 34 34" aria-hidden="true"><path d="M17 10C12 6 4 9 4 18c0 8 6 14 13 12 7 2 13-4 13-12 0-9-8-12-13-8Z" fill="var(--skin)"/><path d="M17 10c0-3 1-5 3-7" fill="none" stroke="var(--seed)" stroke-width="1.8" stroke-linecap="round"/><path d="M20 5c3-3 7-3 9-1-2 3-6 3-9 1Z" fill="var(--leaf)"/></svg>
+      Windfall
+    </a>
+    <nav aria-label="Sections">
+      <a href="#status">Status</a>
+      <a href="#link">The link</a>
+      <a href="#evidence">Evidence</a>
+      <a href="#routes">Routes</a>
+      <a href="#run">Run it</a>
+      <a class="gh" href="https://github.com/UvejsGj/Windfall">GitHub</a>
+    </nav>
+  </div>
+
+  <main id="top">
+    <section class="hero">
+      <div>
+        <p class="defn"><b>windfall</b> <span>/ˈwɪn(d)fɔːl/</span> <span>noun</span></p>
+        <h1>Windfall<span>.</span></h1>
+        <p class="meaning">An apple the wind has dropped from the tree.</p>
+
+        <p class="thesis">AirDrop for Windows and Linux, rebuilt from the bytes up.</p>
+        <p class="lede">Windfall is a from-scratch implementation of Apple's AirDrop protocol, worked out by capturing and measuring it. Nothing is wrapped and nothing is taken on faith: every layer is tested against software we did not write. Real iPhones have AirDropped photos to it, and they arrived byte for byte.</p>
+
+        <div class="cta">
+          <a class="btn solid" href="https://github.com/UvejsGj/Windfall">Get the code</a>
+          <a class="btn" href="https://github.com/UvejsGj/Windfall/blob/main/docs/protocol-notes.md">Read the lab notes</a>
+        </div>
+        <ul class="facts">
+          <li>MIT licence</li>
+          <li>C# on .NET 8</li>
+          <li>279 tests, all passing</li>
+        </ul>
+      </div>
+
+      <div class="drop-wrap">
+        <svg class="twig" viewBox="0 0 150 46" aria-hidden="true">
+          <path d="M0 14C34 6 66 22 112 12c14-3 26-4 38-2" fill="none" stroke="var(--seed)" stroke-width="2.4" stroke-linecap="round"/>
+          <path d="M25 11v9" fill="none" stroke="var(--seed)" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M58 15C62 3 76 1 84 6 80 16 68 20 58 15Z" fill="var(--leaf)"/>
+          <path d="M96 14c8 6 20 6 26-1-8-7-19-6-26 1Z" fill="var(--leaf)"/>
+        </svg>
+        <span class="drop-cap">From an iPhone</span>
+        <ol class="drop" aria-label="What a file passes through on its way in">
+          <li style="--t:0s"><span class="st">BLE beacon</span><span class="sd">18 bytes that say one thing: wake AWDL</span></li>
+          <li style="--t:.98s"><span class="st">AWDL</span><span class="sd">Apple's own Wi-Fi link, shared in time slots</span></li>
+          <li style="--t:1.39s"><span class="st">mDNS</span><span class="sd">the receiver answers as <code>_airdrop._tcp</code></span></li>
+          <li style="--t:1.7s"><span class="st">/Discover</span><span class="sd">TLS with self-signed certificates on both ends</span></li>
+          <li style="--t:1.96s"><span class="st">/Ask</span><span class="sd">the names, a preview, and your yes or no</span></li>
+          <li style="--t:2.19s"><span class="st">/Upload</span><span class="sd">a CPIO archive inside DVZip compression</span></li>
+          <li class="land" style="--t:2.4s"><span class="st">Downloads/Windfall</span><span class="sd">whole, or not at all</span></li>
+          <li class="apple" aria-hidden="true"><svg viewBox="0 0 34 34"><path d="M17 10C12 6 4 9 4 18c0 8 6 14 13 12 7 2 13-4 13-12 0-9-8-12-13-8Z" fill="var(--skin)"/><path d="M17 10c0-3 1-5 3-7" fill="none" stroke="var(--seed)" stroke-width="1.8" stroke-linecap="round"/><path d="M20 5c3-3 7-3 9-1-2 3-6 3-9 1Z" fill="var(--leaf)"/></svg></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="sec" id="status">
+      <header>
+        <span class="label">Where it stands</span>
+        <span class="note">Transfer figures come from recorded sessions with real iPhones.</span>
+      </header>
+      <div class="body">
+        <h2>Working, slowly and not every time.</h2>
+        <dl class="figs">
+          <div><dt>279</dt><dd>tests, all passing</dd></div>
+          <div><dt>3</dt><dd>iOS versions received from: 26.6, 27.0 and 27.0.1</dd></div>
+          <div><dt>1 in 3</dt><dd>recent transfers complete</dd></div>
+          <div><dt>12–27</dt><dd>KB/s on the one Wi-Fi card tested</dd></div>
+        </dl>
+        <ul class="rows">
+          <li><span class="k">iPhone to Windfall</span><span class="chip ok">Works</span><span class="d">Photos arrive byte for byte: one image, several in one share, and PNGs that mix compressed and stored blocks. A failed share leaves nothing behind.</span></li>
+          <li><span class="k">How often</span><span class="chip slow">About 1 in 3</span><span class="d">3 of 10 in session 10, none of 17 at a second place in sessions 11 and 12, then 3 of 10 there in session 13. Every recent success finished within about 15 seconds.</span></li>
+          <li><span class="k">How fast</span><span class="chip slow">12–27 KB/s</span><span class="d">On an Intel AX211. A 200 KB photo takes about 15 s and a 2.5 MB one about 100 s. The largest share to arrive was 6.4 MB, four photos. About 25 MB fails.</span></li>
+          <li><span class="k">Windfall to iPhone</span><span class="chip open">Untested</span><span class="d">The sender is proven only against opendrop, an independent implementation of the same protocol.</span></li>
+          <li><span class="k">Phone setting</span><span class="chip">Everyone for 10 Minutes</span><span class="d">Contacts Only needs an identity issued by Apple, which a non-Apple device cannot hold.</span></li>
+          <li><span class="k">Windows on its own</span><span class="chip no">Cannot reach an iPhone</span><span class="d">The radio has to be Linux, booted directly or used as a bridge. From Windows, Windfall reaches another Windfall, opendrop, or a Mac set to browse all interfaces.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="sec" id="link">
+      <header>
+        <span class="label">The link</span>
+        <span class="note">Captured from an iPhone on iOS 26.6. The owner's contact hashes are redacted.</span>
+      </header>
+      <div class="body">
+        <h2>The one thing to understand first.</h2>
+        <p>AirDrop finds its peers over AWDL, a second Wi-Fi link layer that shares the radio with the normal connection in time slots, on a schedule kept by every Apple device in range. Windows gives an application no way to drive a Wi-Fi card like that, and an iPhone looks for AirDrop nowhere else.</p>
+        <p>The beacon that starts every transfer shows why there is no way around it. It is 18 bytes long.</p>
+
+        <div class="bytes-wrap">
+          <div class="bytes" role="img" aria-label="The 18 bytes of the AirDrop beacon: four prefix bytes, four zero bytes, a version byte of 03, eight bytes holding four two-byte values, and a closing zero.">
+            <span class="pre"><i>0</i>p1</span><span class="pre"><i>1</i>p2</span><span class="pre"><i>2</i>p3</span><span class="pre"><i>3</i>p4</span>
+            <span><i>4</i>00</span><span><i>5</i>00</span><span><i>6</i>00</span><span><i>7</i>00</span>
+            <span class="ver"><i>8</i>03</span>
+            <span class="hsh"><i>9</i>a1</span><span class="hsh"><i>10</i>a2</span><span class="hsh"><i>11</i>f1</span><span class="hsh"><i>12</i>f2</span><span class="hsh"><i>13</i>b1</span><span class="hsh"><i>14</i>b2</span><span class="hsh"><i>15</i>e1</span><span class="hsh"><i>16</i>e2</span>
+            <span><i>17</i>00</span>
+          </div>
+        </div>
+        <ul class="key">
+          <li class="pre"><span><b>0 to 3, a prefix.</b> It carries data and is not yet explained.</span></li>
+          <li><span><b>4 to 7 and 17, zeros.</b> The closing zero has held since iOS 12.</span></li>
+          <li class="ver"><span><b>8, a version.</b> Older research found 01. This phone sends 03.</span></li>
+          <li class="hsh"><span><b>9 to 16, four short values.</b> Two are the first two bytes of a SHA-256 of the owner's phone number and email.</span></li>
+        </ul>
+        <p class="verdict">No field names a channel, an address or a transport. The beacon cannot send a peer anywhere else. It can only mean: wake AWDL.</p>
+
+        <h3>Why it is slow</h3>
+        <p>The speed is the radio, and that is measured. The card under test can only listen in plain monitor mode, so it never acknowledges the frames the phone sends. The phone takes each frame as lost and sends it again until it reaches its retry limit.</p>
+        <div class="frames" role="img" aria-label="Seven transmissions of the same frame: one first attempt and six resends.">
+          <span class="first">sent</span><span>again</span><span>again</span><span>again</span><span>again</span><span>again</span><span>again</span>
+        </div>
+        <p class="small">Six captures in session 10 agreed. Each frame went out about seven times, so 86% of what the phone sent was a resend. Nine sessions of software changes could not move the rate, because none of them could make this card acknowledge.</p>
+      </div>
+    </section>
+
+    <section class="sec" id="evidence">
+      <header>
+        <span class="label">Evidence</span>
+        <span class="note">Everything above the radio is written in this repository.</span>
+      </header>
+      <div class="body">
+        <h2>Tested against things we did not write.</h2>
+        <p>A codec can be wrong in a way that round-trips through itself perfectly. So each layer is checked against an independent implementation, and where none exists, against Apple's own devices.</p>
+        <ul class="rows stack">
+          <li class="head"><span>Layer</span><span>What is built</span><span>Checked against</span></li>
+          <li><span class="k">Binary plist</span><span class="d"><span class="cap">Built</span>A <code>bplist00</code> reader and writer</span><span class="d"><span class="cap">Checked against</span><b>Python plistlib</b>, which writes our fixtures and reads back what we emit</span></li>
+          <li><span class="k">CPIO archive</span><span class="d"><span class="cap">Built</span>A <code>newc</code> writer, and a reader for <code>newc</code> and <code>odc</code></span><span class="d"><span class="cap">Checked against</span><b>bsdtar and libarchive</b>, in both directions</span></li>
+          <li><span class="k">DVZip</span><span class="d"><span class="cap">Built</span>Chunked zlib with stored blocks, and a gzip fallback</span><span class="d"><span class="cap">Checked against</span><b>Real iPhone uploads.</b> No other implementation exists to compare with</span></li>
+          <li><span class="k">mDNS</span><span class="d"><span class="cap">Built</span>The DNS wire format and the AirDrop service records</span><span class="d"><span class="cap">Checked against</span><b>python-zeroconf</b>, which resolves PTR, SRV, TXT and both address families</span></li>
+          <li><span class="k">TLS and HTTP</span><span class="d"><span class="cap">Built</span>Self-signed certificates and a minimal HTTP/1.1 client and server</span><span class="d"><span class="cap">Checked against</span><b>opendrop</b>, as client and as server</span></li>
+          <li><span class="k">Discover, Ask, Upload</span><span class="d"><span class="cap">Built</span>The transfer state machine, both halves</span><span class="d"><span class="cap">Checked against</span><b>opendrop</b> both ways, byte-identical, and <b>iPhones</b> for receiving</span></li>
+          <li><span class="k">Continuity beacon</span><span class="d"><span class="cap">Built</span>A Bluetooth capture tool and a parser</span><span class="d"><span class="cap">Checked against</span><b>A real iPhone</b>, not a write-up</span></li>
+          <li><span class="k">AWDL link</span><span class="d"><span class="cap">Built</span>Not built here. <a href="https://github.com/seemoo-lab/owl">OWL</a> provides <code>awdl0</code> on Linux</span><span class="d"><span class="cap">Checked against</span>This is the layer that limits everything above it</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="sec" id="routes">
+      <header>
+        <span class="label">Routes</span>
+        <span class="note">The project is kept on three branches. Each has its own README.</span>
+      </header>
+      <div class="body">
+        <h2>Three ways across.</h2>
+        <div class="routes">
+          <article class="route">
+            <span class="br">main</span>
+            <h3>AirDrop for Windows</h3>
+            <p>The protocol library, a desktop app and a command line. On an ordinary network it reaches another Windfall, opendrop, or a Mac.</p>
+            <a href="https://github.com/UvejsGj/Windfall">Open main</a>
+          </article>
+          <article class="route">
+            <span class="br">linux</span>
+            <h3>The route that reaches an iPhone</h3>
+            <p>The same code as a Linux command-line tool. With OWL as the radio, every iPhone transfer recorded so far ran here.</p>
+            <a href="https://github.com/UvejsGj/Windfall/tree/linux">Open linux</a>
+          </article>
+          <article class="route">
+            <span class="br">phone-page</span>
+            <h3>No AirDrop at all</h3>
+            <p>The phone scans a code on the PC and sends files both ways in Safari, over ordinary Wi-Fi. No extra hardware and no Linux.</p>
+            <a href="https://github.com/UvejsGj/Windfall/tree/phone-page">Open phone-page</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="run">
+      <header>
+        <span class="label">Run it</span>
+        <span class="note">Needs the .NET 8 SDK. The desktop app is Windows only. The command line also runs on Linux.</span>
+      </header>
+      <div class="body">
+        <h2>Build it and send something.</h2>
+<pre><code>git clone https://github.com/UvejsGj/Windfall.git
+cd Windfall
+dotnet build
+
+dotnet run --project src/Windfall.App              <span class="c"># the desktop app</span>
+dotnet run --project src/Windfall.Cli -- receive
+dotnet run --project src/Windfall.Cli -- send photo.jpg
+dotnet run --project src/Windfall.Cli -- browse    <span class="c"># list nearby peers</span></code></pre>
+        <p>To receive from an iPhone, clone the <a href="https://github.com/UvejsGj/Windfall/tree/linux">linux branch</a> and follow the <a href="https://github.com/UvejsGj/Windfall/blob/main/docs/bridge-hardware-setup.md">hardware runbook</a>. The receiver asks before it saves anything, and that prompt is the only real security boundary in the protocol.</p>
+      </div>
+    </section>
+
+    <section class="sec" id="notes">
+      <header>
+        <span class="label">Lab notes</span>
+        <span class="note">What was observed is kept apart from what was only read.</span>
+      </header>
+      <div class="body">
+        <h2>Each finding is dated and labelled.</h2>
+        <ul class="log">
+          <li><time datetime="2026-10-08">2026-10-08</time><span class="v">SESSION 13</span><span>Transfers work again at the same place. The decline was too slow.</span></li>
+          <li><time datetime="2026-09-22">2026-09-22</time><span class="v yes">CONFIRMED</span><span>The phone is never acknowledged, and resends every frame about 7 times.</span></li>
+          <li><time datetime="2026-09-21">2026-09-21</time><span class="v nope">REFUTED</span><span>A concurrent link on channel 44 gives transmit, not receive.</span></li>
+          <li><time datetime="2026-09-20">2026-09-20</time><span class="v yes">CONFIRMED</span><span>Answering /Ask first fixes the declines. The link is the rest.</span></li>
+          <li><time datetime="2026-09-13">2026-09-13</time><span class="v">OBSERVED</span><span>The first complete AirDrop from an iPhone to Windfall.</span></li>
+          <li><time datetime="2026-09-09">2026-09-09</time><span class="v yes">MEASURED</span><span>iOS really does keep AirDrop off ordinary Wi-Fi.</span></li>
+          <li><time datetime="2026-09-02">2026-09-02</time><span class="v yes">CONFIRMED</span><span>Full interop with opendrop, in both directions.</span></li>
+        </ul>
+        <p><a href="https://github.com/UvejsGj/Windfall/blob/main/docs/protocol-notes.md">Read the whole log</a>, or the <a href="https://github.com/UvejsGj/Windfall/blob/main/docs/adr-001-transport-selection.md">decision record</a> on why the radio is the limit.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <nav aria-label="Project">
+      <a href="https://github.com/UvejsGj/Windfall">GitHub</a>
+      <a href="https://github.com/UvejsGj/Windfall/blob/main/CONTRIBUTING.md">Contributing</a>
+      <a href="https://github.com/UvejsGj/Windfall/blob/main/SECURITY.md">Security</a>
+      <a href="https://github.com/UvejsGj/Windfall/blob/main/LICENSE">MIT licence</a>
+    </nav>
+    <p>Windfall is an independent learning project, formerly called WinDrop. It is not affiliated with or endorsed by Apple. AirDrop, iPhone and Mac are trademarks of Apple Inc.</p>
+  </footer>
+
+</div>
+</body>
+</html>

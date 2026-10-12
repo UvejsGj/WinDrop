@@ -1,0 +1,33 @@
+name: Publish the website
+
+# Publishes the site/ folder to GitHub Pages. It runs only when started by hand, because
+# Pages is not switched on for this repository yet and a run on push would fail. To go
+# live: Settings > Pages > Source > GitHub Actions, then run this workflow. After that a
+# push trigger on site/** can be added here.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
