@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Brings OWL up on an Intel card with an ad-hoc interface beside the monitor one, so that
-# the card acknowledges what the phone sends it. A sibling of owl-session.sh, which stays
-# the way that is known to work.
+# Brings OWL up with an ad-hoc interface beside the monitor one, so that the card
+# acknowledges what the phone sends it. A sibling of owl-session.sh, which stays the way
+# that is known to work.
 #
 # UNTRIED ON REAL HARDWARE when written (2026-10-12). It was rehearsed against stand-ins
 # for iw, ip and owl on a machine with no Wi-Fi card, which proves the order of the steps
@@ -23,15 +23,24 @@
 # one here (8086:7a70), so whether this card behaves the same is what a session has to find
 # out.
 #
+# The card is the interface named first, and nothing below assumes which one it is: its
+# radio (phy) and its driver are read from it. The one step that belongs to a driver, the
+# reload, is done only for iwlwifi. That keeps the script usable with a second card beside
+# the built-in one. The method has only been reported for iwlwifi cards, and what another
+# driver makes of it is not known.
+#
 #   bash tools/owl-build.sh                  # once, while online
 #   bash tools/owl-exclusive.sh              # wlan0
+#   bash tools/owl-exclusive.sh wlan1        # another card
 #   RELOAD=0 bash tools/owl-exclusive.sh     # skip the driver reload described below
 #
 # Ctrl+C stops OWL and puts the card back as an ordinary station. If it is left in ad-hoc
-# mode anyway, reloading the driver undoes everything this script can do to it:
+# mode anyway, reloading its driver undoes everything this script can do to it. For iwlwifi:
 #
 #   sudo modprobe -r iwlmvm iwlwifi
 #   sudo modprobe iwlwifi
+#
+# A USB card is reloaded by unplugging it and plugging it in again.
 #
 # The log lands in /tmp/owl-exclusive-<time>.log; the path is printed before OWL starts.
 set -euo pipefail
@@ -60,18 +69,22 @@ if [ ! -x "$OWL" ]; then
 fi
 
 if [ ! -e "/sys/class/net/${INTERFACE}" ]; then
-  echo "No interface ${INTERFACE} here. Check ip link for the card's name, or, if the"
-  echo "driver was unloaded: sudo modprobe iwlwifi"
+  echo "No interface ${INTERFACE} here. ip link lists the names; give the card's as the"
+  echo "first argument. If its driver was unloaded, load it again first (the Intel card:"
+  echo "sudo modprobe iwlwifi)."
+  exit 1
+fi
+
+if [ ! -e "/sys/class/net/${INTERFACE}/phy80211" ]; then
+  echo "${INTERFACE} is not a Wi-Fi interface."
   exit 1
 fi
 
 DRIVER=$(basename "$(readlink -f "/sys/class/net/${INTERFACE}/device/driver" 2>/dev/null)" 2>/dev/null || true)
+DRIVER=${DRIVER:-unknown}
 
-if [ "$DRIVER" != iwlwifi ]; then
-  echo "${INTERFACE} is driven by ${DRIVER:-something unknown}, not iwlwifi."
-  echo "This way of starting AWDL is for Intel cards. Use owl-session.sh."
-  exit 1
-fi
+# Which card ran is part of every result, more so once there are two in the machine.
+echo "== card: ${INTERFACE}, driver ${DRIVER}, address $(cat "/sys/class/net/${INTERFACE}/address")"
 
 # ---- the way back --------------------------------------------------------------------
 
@@ -114,10 +127,13 @@ cleanup() {
 
     if [ "$type" = managed ]; then
       echo "   ${INTERFACE} is an ordinary station again"
-    else
+    elif [ "$DRIVER" = iwlwifi ]; then
       echo "   ${INTERFACE} is NOT back: it reads '${type:-missing}'. Reload the driver:"
       echo "      sudo modprobe -r iwlmvm iwlwifi"
       echo "      sudo modprobe iwlwifi"
+    else
+      echo "   ${INTERFACE} is NOT back: it reads '${type:-missing}'. Reload its driver (${DRIVER});"
+      echo "   for a USB card, unplug it and plug it in again."
     fi
   else
     echo "   it had not been changed"
@@ -159,7 +175,13 @@ sudo airmon-ng check kill
 # first start, every time, until it was reloaded. Whether this way of starting needs it is
 # not known. A freshly loaded driver is the state this card is known to hear the phone in,
 # and it clears whatever a run before this one left behind, so it is done here too.
-if [ "${RELOAD:-1}" != 0 ]; then
+#
+# Only for iwlwifi: those sessions were all on the Intel card, the module names are its
+# own, and with a second card in the machine a reload aimed at the wrong driver would take
+# down the one that is not in use.
+if [ "${RELOAD:-1}" != 0 ] && [ "$DRIVER" != iwlwifi ]; then
+  echo "== no driver reload: it is only done for iwlwifi, and ${INTERFACE} is ${DRIVER}"
+elif [ "${RELOAD:-1}" != 0 ]; then
   echo "== reloading the Wi-Fi driver (RELOAD=0 skips this)"
   sudo modprobe -r iwlmvm iwlwifi
   sleep 3
@@ -186,6 +208,7 @@ sudo iw dev "$INTERFACE" ibss leave 2>/dev/null || true
 sudo ip link set "$INTERFACE" down
 sudo iw dev "$INTERFACE" set type managed
 
+# Read from the interface, and after the reload, which gives the radio a new name each time.
 PHY=$(cat "/sys/class/net/${INTERFACE}/phy80211/name")
 # Read now, while it is down and nothing manages it, so nothing changes it afterwards.
 ADDRESS=$(cat "/sys/class/net/${INTERFACE}/address")
@@ -294,8 +317,9 @@ echo "   start the receiver in another terminal AFTER owl prints its banner"
 #           whenever the peer is here
 # -S pin    advertise this channel in all sixteen slots, which with -F is the truth
 # -E        elect the sync master the way Apple devices do, by metric first
-# The first line of the log says which of the two ways the cell was made.
+# The log's first two lines say which card ran, and which of the two ways the cell was made.
 {
+  echo "== owl-exclusive: ${INTERFACE}, driver ${DRIVER}, ${PHY}, address ${ADDRESS}"
   echo "== owl-exclusive: cell on ${CELL} ($([ "$CELL" = "$CELL_NAME" ] && echo SEPARATE || echo CONVERTED)), OWL built from omdrop-owl $(cat "$(dirname "$OWL")/built-from" 2>/dev/null || echo unknown)"
   sudo "$OWL" -i "$MONITOR" -c "$CHANNEL" -N -S pin -F -E -v
 } 2>&1 | tee "$LOG"
