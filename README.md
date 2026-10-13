@@ -1,10 +1,20 @@
-# WinDrop
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.png">
+  <img src="assets/banner-light.png" width="100%" alt="Windfall. AirDrop for Windows and Linux, rebuilt from the bytes up.">
+</picture>
+
+# Windfall
 
 An AirDrop implementation built from scratch by reverse-engineering the protocol. Learning
 project: understanding over shortcuts, no wrapping of existing tools.
 
-**This is the `linux` branch.** WinDrop is AirDrop for Windows, and
-[`main`](https://github.com/UvejsGj/WinDrop/tree/main) is that project.
+A windfall is an apple the wind has dropped from the tree. The project was called WinDrop
+until October 2026. On this branch the files and commands still carry the old name
+(`WinDrop.Linux.slnf`, `windrop.dll`, a folder called `WinDrop`); so far only `main` has
+been renamed.
+
+**This is the `linux` branch.** Windfall is AirDrop for Windows, and
+[`main`](https://github.com/UvejsGj/Windfall/tree/main) is that project.
 But Windows cannot yet drive the radio link an iPhone uses
 ([why](#the-one-thing-to-understand-first)), and every transfer with a real iPhone so far
 ran on Linux. This branch is where that side is worked on: the command line on Linux, with
@@ -18,9 +28,9 @@ are not merged back, and each has its own README.
 
 | Branch | What it is |
 |---|---|
-| [`main`](https://github.com/UvejsGj/WinDrop/tree/main) | AirDrop for Windows: the protocol library, the desktop app and the command line. Everything above the radio is built and tested; reaching an iPhone from Windows is what remains |
+| [`main`](https://github.com/UvejsGj/Windfall/tree/main) | AirDrop for Windows: the protocol library, the desktop app and the command line. Everything above the radio is built and tested; reaching an iPhone from Windows is what remains |
 | `linux` (this one) | The same code, worked on as a Linux command-line tool. Linux with OWL is the one setup that reaches an iPhone today, and every iPhone transfer recorded below ran on it. Adds a Linux build and a README that starts from Linux |
-| [`phone-page`](https://github.com/UvejsGj/WinDrop/tree/phone-page) | A separate route between an iPhone and a Windows PC, which is not AirDrop: the phone scans a code on the PC and sends files both ways in Safari, over ordinary Wi-Fi. No extra hardware and no Linux |
+| [`phone-page`](https://github.com/UvejsGj/Windfall/tree/phone-page) | A separate route between an iPhone and a Windows PC, which is not AirDrop: the phone scans a code on the PC and sends files both ways in Safari, over ordinary Wi-Fi. No extra hardware and no Linux |
 
 Changes to the shared protocol code belong on `main`, and this branch takes them from it.
 
@@ -34,8 +44,8 @@ Changes to the shared protocol code belong on `main`, and this branch takes them
 | 3. Self-signed TLS + minimal HTTP/1.1 | **done** |
 | 4. Discover → Ask → Upload state machine | **done** — verified against opendrop, an independent implementation |
 | 5. DVZip compression + CPIO `newc` archive | **done** — CPIO checked against bsdtar/libarchive |
-| 6. Reaching an iPhone | **working, slowly and intermittently** — real iPhones on iOS 26.6, 27.0 and 27.0.1 have AirDropped files to WinDrop, arriving intact. Over Linux + OWL, at 12–27 KB/s and roughly one transfer in three in recent sessions, on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
-| 7. Reaching an iPhone from Windows | **pending** — blocked below WinDrop, at the radio. See [Windows, pending](#windows-pending) |
+| 6. Reaching an iPhone | **working, slowly and intermittently** — real iPhones on iOS 26.6, 27.0 and 27.0.1 have AirDropped files to Windfall, arriving intact. Over Linux + OWL, at 12–27 KB/s and roughly one transfer in three in recent sessions, on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
+| 7. Reaching an iPhone from Windows | **pending** — blocked below Windfall, at the radio. See [Windows, pending](#windows-pending) |
 
 292 tests, all passing, on Linux and on Windows.
 
@@ -61,7 +71,7 @@ not a software one.
 
 ## Where it stands with an iPhone
 
-An iPhone has sent files to WinDrop's receiver running on Linux, with
+An iPhone has sent files to Windfall's receiver running on Linux, with
 [OWL](https://github.com/seemoo-lab/owl) providing `awdl0`. Photos arrived byte-for-byte
 intact on iOS 26.6, 27.0 and 27.0.1: one image, several images in one share, and PNGs
 whose upload mixed compressed and stored DVZip blocks. The log of every session is in
@@ -69,9 +79,9 @@ whose upload mixed compressed and stored DVZip blocks. The log of every session 
 
 | | |
 |---|---|
-| iPhone → WinDrop | **works**, verified on real devices. A share arrives whole or not at all; a failed one leaves nothing behind |
+| iPhone → Windfall | **works**, verified on real devices. A share arrives whole or not at all; a failed one leaves nothing behind |
 | Reliability | **about one transfer in three** recently: 3 of 10 in session 10, none of 17 at another place in sessions 11–12, then 3 of 10 there in session 13. Every recent success finished within about 15 s, and whether small files fare better is the open question |
-| WinDrop → iPhone | **untested**. The sender is proven only against opendrop |
+| Windfall → iPhone | **untested**. The sender is proven only against opendrop |
 | Speed | **12–27 KB/s** in recent sessions on the one card tested (Intel AX211), 15–40 KB/s earlier. A 200 KB photo takes ~15 s, a 2.5 MB one ~100 s. Largest to arrive: 3.6 MB as one file, 6.4 MB as a four-photo share (267 s). ~25 MB fails |
 | Phone setting | **Everyone for 10 Minutes** only. Contacts Only requires an Apple-issued identity, which a non-Apple device cannot hold |
 | Windows alone | **cannot reach an iPhone** (see above). The radio has to be Linux: booted directly, or later a bridge. See [Windows, pending](#windows-pending) |
@@ -104,7 +114,7 @@ the record of the ones tried. Kali packages OWL (`sudo apt install owl`); elsewh
 built from source, as that page shows.
 
 ```bash
-git clone -b linux https://github.com/UvejsGj/WinDrop.git
+git clone -b linux https://github.com/UvejsGj/Windfall.git WinDrop
 cd WinDrop
 dotnet publish src/WinDrop.Cli -c Release -o ~/wd
 
@@ -145,7 +155,7 @@ SDK again. `tools/session-setup.sh` does that, builds the receiver into `~/wd` a
 nearby Wi-Fi. `tools/session-receive.sh` starts the receiver, saving to `/tmp/rx`.
 
 ```bash
-git clone -b linux https://github.com/UvejsGj/WinDrop.git
+git clone -b linux https://github.com/UvejsGj/Windfall.git WinDrop
 bash WinDrop/tools/session-setup.sh             # while still online
 bash ~/WinDrop/tools/owl-session.sh             # terminal 1
 bash ~/WinDrop/tools/session-receive.sh --yes   # terminal 2; leave out --yes to be asked
@@ -189,11 +199,11 @@ bash ~/WinDrop/tools/owl-counts.sh              # any time: the OWL log lines a 
   itself is then switched to ad-hoc. Ctrl+C undoes each step and leaves an ordinary
   station. If the card is left in ad-hoc mode anyway, reloading its driver clears it; on
   the Intel card, `sudo modprobe -r iwlmvm iwlwifi`, then `sudo modprobe iwlwifi`.
-- **It needs a patched OWL, which is not WinDrop's.** The OWL that Kali packages lacks
+- **It needs a patched OWL, which is not Windfall's.** The OWL that Kali packages lacks
   the options this takes. `tools/owl-build.sh` clones omdrop-owl at a pinned commit and
   builds it with omdrop-owl's own script, from the
   [jedbillyb/owl](https://github.com/jedbillyb/owl) fork plus omdrop-owl's patches, into
-  `~/owl-patched/owl`. Both are GPL-3.0, WinDrop is MIT, and none of their code is in
+  `~/owl-patched/owl`. Both are GPL-3.0, Windfall is MIT, and none of their code is in
   this repository: the result is a separate program, built when a session needs it. The
   packaged `owl` is not replaced.
 - **The receiver announces differently.** A radio held on one channel is where the phone
@@ -253,11 +263,11 @@ is not read until they say yes, so an unapproved sender gets no more than the `/
 it already had to send. A "no" is answered the moment the upload starts, without reading
 any of it. `--no-early-ask` restores the classic order.
 
-`send` has only ever been tested against opendrop and WinDrop itself. Sending **to** an
+`send` has only ever been tested against opendrop and Windfall itself. Sending **to** an
 iPhone has not been tried yet.
 
 **Without OWL**, on Linux and Windows alike, the same commands work over an ordinary
-network and reach another WinDrop instance, opendrop, or a Mac started with
+network and reach another Windfall instance, opendrop, or a Mac started with
 `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
 
 ## Windows, pending
@@ -281,7 +291,7 @@ waiting for is a radio, and there are two ways it could get one:
   passed into WSL2, or a second machine. The built-in card cannot be passed through, and
   no suitable adapter has been on hand.
 - **Windows gaining a link that an iPhone will AirDrop over.** Nothing in Windows or its
-  Wi-Fi drivers offers one today, and nothing WinDrop can do from user space changes that.
+  Wi-Fi drivers offers one today, and nothing Windfall can do from user space changes that.
 
 That work belongs on `main`. This branch keeps the Windows side building and its tests
 passing, so the two stay one codebase and a fix made on either can move to the other.
@@ -414,6 +424,7 @@ tools/session-receive.sh            starts the receiver the way a field session 
 tools/retry-capture.sh              counts the phone's resent frames during a transfer
 tools/rehearse/                     rehearses the OWL scripts on a machine with no Wi-Fi card, against stand-ins
 tools/plist_oracle.py               plistlib fixtures and differential oracle
+assets/                             the README banner
 docs/                               ADRs and reverse-engineering notes
 ```
 
