@@ -1,7 +1,16 @@
-# WinDrop
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.png">
+  <img src="assets/banner-light.png" width="100%" alt="Windfall. AirDrop for Windows and Linux, rebuilt from the bytes up.">
+</picture>
+
+# Windfall
 
 An AirDrop implementation for Windows, built from scratch by reverse-engineering the
 protocol. Learning project: understanding over shortcuts, no wrapping of existing tools.
+
+A windfall is an apple the wind has dropped from the tree. The project was called WinDrop
+until October 2026. On this branch the files and commands still carry the old name
+(`WinDrop.sln`, `src/WinDrop.Cli`); so far only `main` has been renamed.
 
 For an iPhone and a Windows PC today, there is also the [phone page](docs/phone-page.md):
 the iPhone scans a code on the PC and sends files both ways in Safari, over ordinary
@@ -17,7 +26,7 @@ Wi-Fi. It is not AirDrop, but it needs no extra hardware and no Linux.
 | 3. Self-signed TLS + minimal HTTP/1.1 | **done** |
 | 4. Discover → Ask → Upload state machine | **done** — verified against opendrop, an independent implementation |
 | 5. DVZip compression + CPIO `newc` archive | **done** — CPIO checked against bsdtar/libarchive |
-| 6. Reaching an iPhone over AirDrop | **working, slowly and intermittently** — real iPhones on iOS 26.6, 27.0 and 27.0.1 have AirDropped files to WinDrop, arriving intact. Over Linux + OWL, at 12–27 KB/s and roughly one transfer in three in recent sessions, on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
+| 6. Reaching an iPhone over AirDrop | **working, slowly and intermittently** — real iPhones on iOS 26.6, 27.0 and 27.0.1 have AirDropped files to Windfall, arriving intact. Over Linux + OWL, at 12–27 KB/s and roughly one transfer in three in recent sessions, on the hardware tested. See [where it stands](#where-it-stands-with-an-iphone) |
 | 7. The phone page: iPhone ↔ Windows over ordinary Wi-Fi, not AirDrop | **working with a real iPhone**: on iOS 27.0.1 the camera read the code, one photo and then five in one send arrived intact on plain Windows, a decline reached the phone as "Declined", and five images and a video downloaded from the PC to the phone. No Linux and no extra hardware. See [phone-page.md](docs/phone-page.md) |
 
 386 tests, all passing.
@@ -41,7 +50,7 @@ not a software one.
 
 ## Where it stands with an iPhone
 
-An iPhone has sent files to WinDrop's receiver running on Linux, with
+An iPhone has sent files to Windfall's receiver running on Linux, with
 [OWL](https://github.com/seemoo-lab/owl) providing `awdl0`. Photos arrived byte-for-byte
 intact on iOS 26.6, 27.0 and 27.0.1: one image, several images in one share, and PNGs
 whose upload mixed compressed and stored DVZip blocks. The log of every session is in
@@ -49,9 +58,9 @@ whose upload mixed compressed and stored DVZip blocks. The log of every session 
 
 | | |
 |---|---|
-| iPhone → WinDrop | **works**, verified on real devices. A share arrives whole or not at all; a failed one leaves nothing behind |
+| iPhone → Windfall | **works**, verified on real devices. A share arrives whole or not at all; a failed one leaves nothing behind |
 | Reliability | **about one transfer in three** recently: 3 of 10 in session 10, none of 17 at another place in sessions 11–12, then 3 of 10 there in session 13. Every recent success finished within about 15 s, and whether small files fare better is the open question |
-| WinDrop → iPhone | **untested**. The sender is proven only against opendrop |
+| Windfall → iPhone | **untested**. The sender is proven only against opendrop |
 | Speed | **12–27 KB/s** in recent sessions on the one card tested (Intel AX211), 15–40 KB/s earlier. A 200 KB photo takes ~15 s, a 2.5 MB one ~100 s. Largest to arrive: 3.6 MB as one file, 6.4 MB as a four-photo share (267 s). ~25 MB fails |
 | Phone setting | **Everyone for 10 Minutes** only. Contacts Only requires an Apple-issued identity, which a non-Apple device cannot hold |
 | Windows alone | **cannot AirDrop with an iPhone** (see above). The radio has to be Linux: booted directly, or later a bridge. The [phone page](docs/phone-page.md) reaches an iPhone from Windows alone, as a web page rather than as AirDrop |
@@ -89,7 +98,7 @@ is not read until they say yes, so an unapproved sender gets no more than the `/
 it already had to send. A "no" is answered the moment the upload starts, without reading
 any of it. `--no-early-ask` restores the classic order.
 
-**Who this reaches from Windows:** another WinDrop instance, opendrop, or a Mac started
+**Who this reaches from Windows:** another Windfall instance, opendrop, or a Mac started
 with `defaults write com.apple.NetworkBrowser BrowseAllInterfaces -bool true`.
 
 **The phone page** reaches any phone on the same Wi-Fi, an iPhone included. In the app,
@@ -227,6 +236,7 @@ tools/windrop-bridge.py             the Linux-side AWDL relay daemon
 tools/owl-session.sh                brings OWL up for a field session on Kali, and logs it
 tools/retry-capture.sh              counts the phone's resent frames during a transfer
 tools/plist_oracle.py               plistlib fixtures and differential oracle
+assets/                             the README banner
 docs/                               ADRs and reverse-engineering notes
 ```
 
