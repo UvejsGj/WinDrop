@@ -1,11 +1,11 @@
 name: Bug report
-description: Something in WinDrop does not work as it should.
+description: Something in Windfall does not work as it should.
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting. If this could be a security problem, please do not file it here: see [SECURITY.md](https://github.com/UvejsGj/WinDrop/blob/main/SECURITY.md).
+        Thanks for reporting. If this could be a security problem, please do not file it here: see [SECURITY.md](https://github.com/UvejsGj/Windfall/blob/main/SECURITY.md).
 
         **Redact before pasting logs.** This repository is public. Remove device names, MAC addresses, UUIDs, IP addresses, and file names beyond the `IMG_xxxx` pattern.
   - type: textarea
@@ -23,7 +23,7 @@ body:
         - Windows app
         - CLI on Windows
         - CLI on Linux with OWL
-        - Linux bridge (windrop-bridge.py)
+        - Linux bridge (windfall-bridge.py)
         - Protocol library
         - Not sure
     validations:
@@ -32,8 +32,8 @@ body:
     id: peer
     attributes:
       label: The other device
-      description: What WinDrop was talking to, with its OS version.
-      placeholder: "e.g. iPhone 13 Pro Max on iOS 27.0, another WinDrop, opendrop"
+      description: What Windfall was talking to, with its OS version.
+      placeholder: "e.g. iPhone 13 Pro Max on iOS 27.0, another Windfall, opendrop"
   - type: input
     id: commit
     attributes:

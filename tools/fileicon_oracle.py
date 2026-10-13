@@ -12,7 +12,7 @@ Writes three files:
   control.jpg                    the same thumbnail as JPEG, a positive control for decoders
   opendrop-ask-with-icon.bplist  an /Ask body shaped like client.send_ask, icon included
 
-The last one is the test fixture tests/WinDrop.Protocol.Tests/fixtures uses.
+The last one is the test fixture tests/Windfall.Protocol.Tests/fixtures uses.
 
 generate_file_icon is replicated rather than imported because it no longer runs:
 it calls Image.ANTIALIAS, which Pillow 10 removed, so on a current install

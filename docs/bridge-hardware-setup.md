@@ -30,8 +30,8 @@ whose config is already on disk at `/proc/config.gz`.
 
 The experiment that decides whether this project has a future needs only a Linux machine
 with a capable radio. It does not need Windows, WSL, usbipd, a compiled driver, the
-bridge daemon, or any WinDrop code. Everything in phases 1 to 4 exists solely to let
-WinDrop *use* a radio once you know a radio is worth having.
+bridge daemon, or any Windfall code. Everything in phases 1 to 4 exists solely to let
+Windfall *use* a radio once you know a radio is worth having.
 
 Kali packages OWL, so there is nothing to build.
 
@@ -57,7 +57,7 @@ sudo iw phy phy0 info | grep -i "active monitor"
 
 **Start with the spare laptop**, not the main desktop. Even if the desktop's card turns
 out to be capable, it can never be the bridge: the bridge has to run Linux *while*
-Windows runs WinDrop, and one machine cannot do both. The desktop can only answer the
+Windows runs Windfall, and one machine cannot do both. The desktop can only answer the
 yes/no question. The spare answers the same question and is the machine that would
 actually hold the radio afterwards.
 
@@ -188,7 +188,7 @@ avoid `<` and `>` in version specifiers: unquoted, the shell reads them as redir
 **Configuration names are case-sensitive on Linux.** A build typed as `-c release` lands
 in `bin/release`, and `dotnet run -c Release --no-build` then finds nothing. Windows
 never shows this. The dependable form is to publish to a fixed folder and run the DLL
-from it: `dotnet publish … -c Release -o ~/wd`, then `dotnet ~/wd/windrop.dll`.
+from it: `dotnet publish … -c Release -o ~/wd`, then `dotnet ~/wd/windfall.dll`.
 
 **Start OWL first, then the receiver, every time.** Restarting OWL destroys and recreates
 `awdl0`. A receiver started earlier keeps its sockets on the old interface and silently
@@ -291,7 +291,7 @@ protocol's only real security boundary.
   still shows its members. The only success line is `upload complete`. `dvzip: N block(s)`
   now comes after the member lines, at the very end. `block N is stored` still means block
   N arrived whole. A failed transfer still leaves nothing behind: files wait in a hidden
-  `.windrop-incoming-…` folder and move into place only when the upload ends cleanly.
+  `.windfall-incoming-…` folder and move into place only when the upload ends cleanly.
 
 When a second radio is present, use `sudo iw list | grep -i "active monitor"` rather
 than naming `phy0`. It covers every phy, and a dongle will not be `phy0` beside an
@@ -513,7 +513,7 @@ sudo ./owl -i wlan0 -c 149 -v
 
 ## Phase 5 — the experiment. Stop here and read the result.
 
-This is the whole point of the purchase. It does not involve WinDrop at all — it tests
+This is the whole point of the purchase. It does not involve Windfall at all — it tests
 whether **anything** non-Apple can still see a current iPhone.
 
 ```bash
@@ -531,13 +531,13 @@ is identical to the symptom of failure, so check it first when nothing appears.
 ## Phase 6 — only if phase 5 passed
 
 ```bash
-sudo ./tools/windrop-bridge.py --interface awdl0
+sudo ./tools/windfall-bridge.py --interface awdl0
 ```
 
 On Windows:
 
 ```powershell
-dotnet run --project src\WinDrop.Cli -- receive --bridge localhost
+dotnet run --project src\Windfall.Cli -- receive --bridge localhost
 ```
 
 Everything from here is already built and tested. The relay has been exercised end to

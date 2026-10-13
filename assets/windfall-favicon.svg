@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+<defs>
+    <mask id="gust" maskUnits="userSpaceOnUse" x="-4" y="-4" width="24" height="24">
+      <rect x="-4" y="-4" width="24" height="24" fill="#fff" />
+      <path d="M-2 9H7" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" />
+    </mask>
+  </defs>
+  <g mask="url(#gust)">
+    <path fill="#BF2E2A" transform="translate(8.11 7.18) rotate(12) scale(0.2) translate(-50 -48)" d="M50 31C45 25 37 23 30 25C19 28 12 38 12 50C12 67 23 87 36 88C42 88.5 46 86 50 86C54 86 58 88.5 64 88C77 87 88 67 88 50C88 38 81 28 70 25C63 23 55 25 50 31Z" />
+  </g>
+  <g fill="#37722F" transform="translate(8.11 7.18) rotate(12) scale(0.2) translate(-50 -48)">
+    <rect x="46.5" y="14" width="11" height="20" rx="5.5" transform="rotate(14 52 30)" />
+    <path d="M54 24C56 12 66 7 79 8C78 20 68 28 54 24Z" />
+  </g>
+</svg>

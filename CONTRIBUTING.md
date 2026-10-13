@@ -1,6 +1,6 @@
-# Contributing to WinDrop
+# Contributing to Windfall
 
-WinDrop is a learning project: an AirDrop implementation for Windows, built from scratch by
+Windfall is a learning project: an AirDrop implementation for Windows, built from scratch by
 reverse-engineering the protocol. Understanding comes before speed here. Contributions are
 welcome in that spirit, and a correct explanation of why something works is worth as much
 as the code that does it.

@@ -1,6 +1,6 @@
 # Security policy
 
-WinDrop's receiver accepts files from devices it has never met, over a protocol where the
+Windfall's receiver accepts files from devices it has never met, over a protocol where the
 sender proves nothing about who it is. That makes receiving the part of this project where
 a bug matters most, and reports about it are welcome.
 
@@ -8,7 +8,7 @@ a bug matters most, and reports about it are welcome.
 
 Please do not open a public issue. Report it privately through GitHub: the repository's
 **Security** tab, then **Report a vulnerability**
-([direct link](https://github.com/UvejsGj/WinDrop/security/advisories/new)).
+([direct link](https://github.com/UvejsGj/Windfall/security/advisories/new)).
 
 Say what you sent, what happened, and which commit you tested. A receiver log helps; redact
 device names, MAC addresses, UUIDs, IP addresses and anything else that identifies a person
@@ -56,8 +56,8 @@ These are properties of AirDrop's Everyone mode, or documented test switches, no
 - **`--yes` skips the consent prompt** on purpose, for scripted testing. It removes the one
   real security boundary, which is why the receiver announces it.
 - **Early-ask answers "go ahead" before the person decides.** The upload is still not read
-  until they do. The reasoning is in `src/WinDrop.Protocol/AirDropReceiver.cs`.
+  until they do. The reasoning is in `src/Windfall.Protocol/AirDropReceiver.cs`.
 - **Anyone nearby can see the receiver** while it advertises. That is what advertising is for.
-- **The bridge** (`tools/windrop-bridge.py`) can drop or delay traffic. It parses nothing and
+- **The bridge** (`tools/windfall-bridge.py`) can drop or delay traffic. It parses nothing and
   terminates no TLS, so it cannot read a transfer, but it can deny service.
 - **Radio limitations**, such as the slow transfers on cards without active monitor mode.

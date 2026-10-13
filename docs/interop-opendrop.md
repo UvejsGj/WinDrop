@@ -36,7 +36,7 @@ discovery may find nothing even though everything else would work.
 
 Two ways around it.
 
-**Option A — skip discovery.** `windrop send --peer <address>` connects straight to an
+**Option A — skip discovery.** `windfall send --peer <address>` connects straight to an
 address and never browses. Since the app-layer protocol is what we are testing and not
 our mDNS implementation, this loses nothing that matters. Get the WSL address with:
 
@@ -61,15 +61,15 @@ The loopback tests never crossed a network boundary. This does, and Windows Fire
 will drop it silently. In an **Administrator** PowerShell:
 
 ```powershell
-netsh advfirewall firewall add rule name="WinDrop 8770" dir=in action=allow protocol=TCP localport=8770
-netsh advfirewall firewall add rule name="WinDrop mDNS" dir=in action=allow protocol=UDP localport=5353
+netsh advfirewall firewall add rule name="Windfall 8770" dir=in action=allow protocol=TCP localport=8770
+netsh advfirewall firewall add rule name="Windfall mDNS" dir=in action=allow protocol=UDP localport=5353
 ```
 
 To remove them afterwards:
 
 ```powershell
-netsh advfirewall firewall delete rule name="WinDrop 8770"
-netsh advfirewall firewall delete rule name="WinDrop mDNS"
+netsh advfirewall firewall delete rule name="Windfall 8770"
+netsh advfirewall firewall delete rule name="Windfall mDNS"
 ```
 
 ## 2. Get a Python old enough for opendrop
@@ -121,7 +121,7 @@ ip -brief addr
 opendrop --help
 ```
 
-## 4. Test A — WinDrop sends, opendrop receives
+## 4. Test A — Windfall sends, opendrop receives
 
 **Status: passing as of 2026-09-02.** See [protocol-notes.md](protocol-notes.md).
 
@@ -154,7 +154,7 @@ Get-NetAdapter | Where-Object { $_.Name -like "*WSL*" } | Format-Table Name,ifIn
 Then send, combining opendrop's address with that index:
 
 ```powershell
-dotnet run --project src\WinDrop.Cli -- send --peer "fe80::215:5dff:fe69:142%45" --port 8771 C:\path\to\photo.jpg
+dotnet run --project src\Windfall.Cli -- send --peer "fe80::215:5dff:fe69:142%45" --port 8771 C:\path\to\photo.jpg
 ```
 
 opendrop prompts for consent in its own terminal; answer `y`. Expected:
@@ -182,7 +182,7 @@ Get-FileHash C:\path\to\photo.jpg -Algorithm MD5
 md5sum ~/photo.jpg
 ```
 
-## 5. Test B — opendrop sends, WinDrop receives
+## 5. Test B — opendrop sends, Windfall receives
 
 **Status: passing as of 2026-09-02, after fixing two real bugs.** See
 [protocol-notes.md](protocol-notes.md).
@@ -208,7 +208,7 @@ Then create the report, substituting that address:
 ```bash
 mkdir -p ~/.opendrop
 cat > ~/.opendrop/discover.last.json <<'JSON'
-[{"name":"WinDrop","address":"172.27.48.1","port":8770,"id":"windroptestb","flags":10,"discoverable":true}]
+[{"name":"Windfall","address":"172.27.48.1","port":8770,"id":"windfalltestb","flags":10,"discoverable":true}]
 JSON
 ```
 
@@ -223,7 +223,7 @@ dies with `TypeError: encode() argument 'encoding' must be str, not int`:
 On Windows:
 
 ```powershell
-dotnet run --project src\WinDrop.Cli -- receive
+dotnet run --project src\Windfall.Cli -- receive
 ```
 
 In WSL:
@@ -233,7 +233,7 @@ opendrop send -r 0 -f ~/somefile.txt -i eth0
 ```
 
 Expect `Uploading has been successful`, a consent prompt on our side, and the file in
-`%USERPROFILE%\Downloads\WinDrop`. Verify with `md5sum` and `Get-FileHash` rather than
+`%USERPROFILE%\Downloads\Windfall`. Verify with `md5sum` and `Get-FileHash` rather than
 trusting the success message.
 
 ## 6. What is likely to break, and what each failure means

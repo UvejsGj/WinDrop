@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Windfall.Cli</RootNamespace>
+    <AssemblyName>windfall</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Windfall.Protocol\Windfall.Protocol.csproj" />
+    <InternalsVisibleTo Include="Windfall.Protocol.Tests" />
+  </ItemGroup>
+</Project>
